@@ -1,11 +1,27 @@
 # Changelog
 
+## [0.4.0] - 2026-04-28
+
+### Added
+
+- Username/code login with hidden Supabase Auth aliases under `trabix.local`.
+- Admin-only embajador creation with username, full name, phone, code, and password.
+- Dev-only bootstrap script for the local admin user `samuel / samuel123`.
+- `.env.local` template with Supabase service role and alias-domain settings.
+
+### Changed
+
+- Removed the public signup flow from the login screen.
+- Updated login rate limiting to key by username/IP instead of email/IP.
+- Removed email from the user-facing admin and embajador dashboards.
+- Updated repository docs and package versioning for the new login model.
+
 ## [0.3.0] - 2026-04-28
 
 ### Added
 
 - Upstash Redis-backed rate limiting for login and embajador surfaces.
-- Per-IP and per-email/IP throttles on the login flow.
+- Per-IP and per-username/IP throttles on the login flow.
 - Per-user/IP throttling for embajador page access and embajador sales submissions.
 - 429 responses with retry hints for blocked requests.
 - Login UI feedback for rate limit and service-unavailable states.

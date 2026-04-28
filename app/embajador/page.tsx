@@ -22,7 +22,7 @@ export default async function EmbajadorPage() {
   const stats = [
     { label: "Ventas propias", value: String(sales.length), detail: `${formatCurrency(sum(sales.map((sale) => sale.amount)))} en ingresos` },
     { label: "Gastos asociados", value: String(expenses.length), detail: `${formatCurrency(sum(expenses.map((expense) => expense.amount)))} vinculados` },
-    { label: "Código", value: auth.profile.ambassador_id ?? "N/A", detail: auth.profile.email },
+    { label: "Código", value: auth.profile.ambassador_id ?? auth.profile.username, detail: auth.profile.username },
     { label: "Estado", value: auth.profile.is_active ? "Activo" : "Inactivo", detail: auth.profile.full_name ?? "Sin nombre" }
   ];
 
@@ -90,8 +90,8 @@ export default async function EmbajadorPage() {
           </header>
           <div className="profile-card">
             <div>
-              <strong>{auth.profile.full_name ?? auth.email}</strong>
-              <p>{auth.profile.email}</p>
+              <strong>{auth.profile.full_name ?? auth.profile.username}</strong>
+              <p>{auth.profile.username}</p>
             </div>
             <div>
               <span className="chip">{auth.profile.role}</span>

@@ -25,13 +25,10 @@ export function LoginForm({ initialMessage }: Props) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-    const mode = submitter?.value === "signup" ? "signup" : "login";
     const formData = new FormData(event.currentTarget);
-    formData.set("mode", mode);
 
     setIsSubmitting(true);
-    setMessage("Procesando credenciales...");
+    setMessage("Validando usuario...");
 
     try {
       const response = await fetch("/api/auth/session", {
@@ -60,12 +57,12 @@ export function LoginForm({ initialMessage }: Props) {
   return (
     <form className="auth-form" action="/api/auth/session" method="post" onSubmit={handleSubmit}>
       <label className="field">
-        <span>Correo</span>
-        <input className="input" type="email" name="email" placeholder="tu@trabix.com" required />
+        <span>Usuario o código</span>
+        <input className="input" type="text" name="identifier" placeholder="samuel o emb-001" autoComplete="username" required />
       </label>
       <label className="field">
         <span>Contraseña</span>
-        <input className="input" type="password" name="password" placeholder="••••••••" required />
+        <input className="input" type="password" name="password" placeholder="••••••••" autoComplete="current-password" required />
       </label>
 
       <p className="auth-banner" aria-live="polite">
@@ -76,13 +73,10 @@ export function LoginForm({ initialMessage }: Props) {
         <button className="button button-primary" type="submit" name="mode" value="login" disabled={isSubmitting}>
           {isSubmitting ? "Entrando..." : "Entrar"}
         </button>
-        <button className="button button-secondary" type="submit" name="mode" value="signup" disabled={isSubmitting}>
-          {isSubmitting ? "Procesando..." : "Crear cuenta"}
-        </button>
       </div>
 
       <p className="auth-footnote">
-        El primer usuario registrado queda como admin automático. Después puedes promover o desactivar perfiles desde Supabase.
+        El acceso usa un alias interno de Supabase. No se usan correos visibles en la interfaz.
       </p>
     </form>
   );

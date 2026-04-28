@@ -5,7 +5,6 @@ import { LoginForm } from "./login-form";
 function messageFor(error?: string, notice?: string, retryAfter?: string) {
   if (error === "missing_credentials") return "Faltan credenciales.";
   if (error === "login_failed") return "No se pudo iniciar sesión.";
-  if (error === "signup_failed") return "No se pudo crear la cuenta.";
   if (error === "profile_missing") return "La cuenta no tiene perfil activo.";
   if (error === "profile_inactive") return "La cuenta fue desactivada.";
   if (error === "not_authorized") return "No tienes permisos para esa acción.";
@@ -15,11 +14,11 @@ function messageFor(error?: string, notice?: string, retryAfter?: string) {
   if (error === "expense_failed") return "No se pudo guardar el gasto.";
   if (error === "sale_failed") return "No se pudo guardar la venta.";
   if (error === "profile_failed") return "No se pudo actualizar el perfil.";
+  if (error === "invalid_identifier") return "El usuario o código no es válido.";
   if (error === "rate_limited") {
     return retryAfter ? `Demasiados intentos. Intenta de nuevo en ${retryAfter} segundos.` : "Demasiados intentos. Intenta más tarde.";
   }
-  if (notice === "account_created") return "Cuenta creada. Ahora puedes iniciar sesión.";
-  return "Acceso protegido por Supabase Auth y RLS.";
+  return "Acceso protegido por Supabase Auth, alias internos y RLS.";
 }
 
 type Props = {
@@ -55,6 +54,7 @@ export default async function LoginPage({ searchParams }: Props) {
               <li>Redirección por rol con middleware.</li>
               <li>Acceso a datos limitado por RLS.</li>
               <li>Rate limiting con Redis para login y embajador.</li>
+              <li>Identificador visible por usuario o código, sin correo en UI.</li>
             </ul>
           </div>
 

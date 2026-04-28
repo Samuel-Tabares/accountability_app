@@ -4,7 +4,6 @@ import { createSupabaseServerClient } from "./supabase/server";
 
 export type AuthContext = {
   userId: string;
-  email: string;
   profile: ProfileRow;
 };
 
@@ -38,7 +37,6 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 
   return {
     userId: user.id,
-    email: profile.email ?? user.email ?? "",
     profile
   };
 }

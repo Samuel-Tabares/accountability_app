@@ -33,8 +33,7 @@ export async function POST(request: NextRequest) {
 
   const targetId = String(formData.get("profile_id") ?? "").trim();
   const fullName = String(formData.get("full_name") ?? "").trim() || null;
-  const role = String(formData.get("role") ?? "embajador");
-  const ambassadorId = String(formData.get("ambassador_id") ?? "").trim() || null;
+  const phone = String(formData.get("phone") ?? "").trim() || null;
   const isActive = String(formData.get("is_active") ?? "true") === "true";
 
   if (!targetId) {
@@ -45,8 +44,7 @@ export async function POST(request: NextRequest) {
     .from("profiles")
     .update({
       full_name: fullName,
-      role: role === "admin" ? "admin" : "embajador",
-      ambassador_id: ambassadorId,
+      phone,
       is_active: isActive
     })
     .eq("id", targetId);

@@ -18,7 +18,7 @@ export type RateLimitDecision =
       unavailable?: boolean;
     };
 
-type Scope = "login-ip" | "login-email" | "embajador";
+type Scope = "login-ip" | "login-identifier" | "embajador";
 
 const limiterCache = new Map<Scope, Ratelimit | null>();
 let redisClient: Redis | null = null;
@@ -117,31 +117,31 @@ export function getClientIp(request: NextRequest) {
   return request.headers.get("x-real-ip")?.trim() || "unknown-ip";
 }
 
-export function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
+export function normalizeLoginIdentifier(identifier: string) {
+  return identifier.trim().toLowerCase();
 }
 
-export async function rateLimitLogin(request: NextRequest, email: string) {
+export async function rateLimitLogin(request: NextRequest, identifier: string) {
   const ip = getClientIp(request);
-  const normalizedEmail = normalizeEmail(email);
+  const normalizedIdentifier = normalizeLoginIdentifier(identifier);
 
-  const [ipDecision, emailDecision] = await Promise.all([
+  const [ipDecision, identifierDecision] = await Promise.all([
     evaluateLimit("login-ip", 5, "10 m", ip),
-    evaluateLimit("login-email", 3, "15 m", `${normalizedEmail}:${ip}`)
+    evaluateLimit("login-identifier", 3, "15 m", `${normalizedIdentifier}:${ip}`)
   ]);
 
-  if (ipDecision.allowed && emailDecision.allowed) {
+  if (ipDecision.allowed && identifierDecision.allowed) {
     return {
       allowed: true as const,
       ipDecision,
-      emailDecision
+      identifierDecision
     };
   }
 
   const ipUnavailable = !ipDecision.allowed && ipDecision.unavailable;
-  const emailUnavailable = !emailDecision.allowed && emailDecision.unavailable;
+  const identifierUnavailable = !identifierDecision.allowed && identifierDecision.unavailable;
 
-  if (ipUnavailable || emailUnavailable) {
+  if (ipUnavailable || identifierUnavailable) {
     return {
       allowed: false as const,
       unavailable: true as const,
@@ -149,7 +149,7 @@ export async function rateLimitLogin(request: NextRequest, email: string) {
     };
   }
 
-  const blockedDecisions = [ipDecision, emailDecision].filter(
+  const blockedDecisions = [ipDecision, identifierDecision].filter(
     (decision): decision is Extract<RateLimitDecision, { allowed: false }> => !decision.allowed
   );
   const retryAfterSecondsValue = Math.max(...blockedDecisions.map((decision) => decision.retryAfterSeconds));

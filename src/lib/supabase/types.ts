@@ -9,7 +9,9 @@ export type Database = {
         Row: {
           id: string;
           email: string;
+          username: string;
           full_name: string | null;
+          phone: string | null;
           role: AppRole;
           ambassador_id: string | null;
           is_active: boolean;
@@ -19,7 +21,9 @@ export type Database = {
         Insert: {
           id?: string;
           email: string;
+          username: string;
           full_name?: string | null;
+          phone?: string | null;
           role?: AppRole;
           ambassador_id?: string | null;
           is_active?: boolean;
@@ -29,7 +33,9 @@ export type Database = {
         Update: {
           id?: string;
           email?: string;
+          username?: string;
           full_name?: string | null;
+          phone?: string | null;
           role?: AppRole;
           ambassador_id?: string | null;
           is_active?: boolean;

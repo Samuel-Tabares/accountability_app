@@ -1,22 +1,23 @@
 # TRABIX Granizados
 
-Version `0.3.0`
+Version `0.4.0`
 
 TRABIX is a Next.js + Supabase app with two protected experiences:
 
 - `admin`
 - `embajador`
 
-The app uses Supabase Auth for sessions, Supabase Postgres for data, and RLS for authorization at the database layer.
+The app uses Supabase Auth for sessions, Supabase Postgres for data, and RLS for authorization at the database layer. The user-facing login is `usuario/código + contraseña`; email is only a hidden technical alias for Supabase Auth.
 
 ## Current Architecture
 
-- `app/login` handles sign in and sign up.
+- `app/login` handles sign in with username/code plus password.
 - `app/admin` is the admin dashboard.
 - `app/embajador` is the embajador dashboard.
 - `middleware.ts` redirects users by session and role, and rate-limits embajador navigation.
-- `app/api/*` contains authenticated route handlers for login, logout, sales, expenses, and profile updates.
+- `app/api/*` contains authenticated route handlers for login, logout, embajador creation, sales, expenses, and profile updates.
 - `supabase/migrations/0001_init.sql` defines the local schema, auth trigger, and RLS policies.
+- `supabase/migrations/0002_identity_alias.sql` adds username/code aliasing and hidden-auth profile fields.
 
 ## Local Setup
 
@@ -41,6 +42,12 @@ supabase db reset
 npm run dev
 ```
 
+5. Bootstrap the local admin user for testing.
+
+```bash
+npm run seed:admin
+```
+
 ## Docker
 
 Run the app in a container on port `3000`.
@@ -53,12 +60,15 @@ docker compose up --build
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_AUTH_ALIAS_DOMAIN`
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
+- `ALLOW_BOOTSTRAP_ADMIN`
 
 ## Abuse Protection
 
-- Login requests are rate-limited by IP and by email/IP pair with Upstash Redis.
+- Login requests are rate-limited by IP and by username/IP pair with Upstash Redis.
 - Embajador page loads and embajador sales submissions are rate-limited by authenticated user ID plus IP.
 - When login is rate-limited, the API returns `429 Too Many Requests` and the login form shows the retry window.
 - If Redis is temporarily unavailable, login fails closed and embajador navigation is allowed to preserve availability.
@@ -74,8 +84,8 @@ docker compose up --build
 
 - Supabase Auth owns the session.
 - `profiles` links app users to `auth.users`.
-- The first authenticated user becomes `admin`.
-- Later users default to `embajador`.
+- Embajadores are created only by the admin through the admin panel or the bootstrap script.
+- Admin bootstrap user `samuel / samuel123` can be created with `npm run seed:admin` in local development.
 - RLS enforces access at the database layer, so the frontend is not the source of truth for permissions.
 
 ## License
