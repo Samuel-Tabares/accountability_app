@@ -1,15 +1,24 @@
 # TRABIX Granizados
 
-Next.js + Supabase app with role-based dashboards for `admin` and `embajador`.
+Version `0.2.0`
 
-## Stack
+TRABIX is a Next.js + Supabase app with two protected experiences:
 
-- Next.js App Router
-- Supabase Auth
-- Supabase Postgres with RLS
-- TypeScript
+- `admin`
+- `embajador`
 
-## Local setup
+The app uses Supabase Auth for sessions, Supabase Postgres for data, and RLS for authorization at the database layer.
+
+## Current Architecture
+
+- `app/login` handles sign in and sign up.
+- `app/admin` is the admin dashboard.
+- `app/embajador` is the embajador dashboard.
+- `middleware.ts` redirects users by session and role.
+- `app/api/*` contains authenticated route handlers for login, logout, sales, expenses, and profile updates.
+- `supabase/migrations/0001_init.sql` defines the local schema, auth trigger, and RLS policies.
+
+## Local Setup
 
 1. Install dependencies.
 
@@ -17,7 +26,7 @@ Next.js + Supabase app with role-based dashboards for `admin` and `embajador`.
 npm install
 ```
 
-2. Fill `.env.local` from `.env.example`.
+2. Create `.env.local` from `.env.example`.
 
 3. Start Supabase locally and apply the migration.
 
@@ -34,32 +43,37 @@ npm run dev
 
 ## Docker
 
-Run the web app in a container on port `3000`.
+Run the app in a container on port `3000`.
 
 ```bash
 docker compose up --build
 ```
 
-## Auth model
+## Environment Variables
 
-- `profiles` is the app identity table linked to `auth.users`.
-- The first authenticated user created by Supabase becomes `admin`.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+## Release And Traceability
+
+- Change history lives in [CHANGELOG.md](./CHANGELOG.md).
+- Repo workflow rules live in [AGENTS.md](./AGENTS.md).
+- Version bumps are tracked in `package.json`.
+- Any code change should be matched with the documentation it affects.
+
+## Security Model
+
+- Supabase Auth owns the session.
+- `profiles` links app users to `auth.users`.
+- The first authenticated user becomes `admin`.
 - Later users default to `embajador`.
-- Middleware redirects unauthenticated traffic to `/login` and keeps users on the dashboard that matches their role.
+- RLS enforces access at the database layer, so the frontend is not the source of truth for permissions.
 
-## Data access
+## License
 
-- Admins can read and write all protected tables.
-- Embajadores can only read their own scoped rows.
-- All authorization-sensitive queries go through Supabase and are enforced again with RLS.
-
-## Routes
-
-- `/login`
-- `/admin`
-- `/embajador`
+This repository uses a restrictive source-available license. See [LICENSE](./LICENSE) for terms.
 
 ## Notes
 
-- This repo no longer treats `localStorage` as the source of truth for authentication or permissions.
-- The old prototype logic is kept only as reference in the library folder.
+- `localStorage` is no longer used as the auth/session source of truth.
+- The app is intended to be maintained through documented, versioned changes.
