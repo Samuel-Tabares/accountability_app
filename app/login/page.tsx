@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { dashboardPathForRole, getAuthContext } from "@/src/lib/auth";
+import { LoginForm } from "./login-form";
 
-function messageFor(error?: string, notice?: string) {
+function messageFor(error?: string, notice?: string, retryAfter?: string) {
   if (error === "missing_credentials") return "Faltan credenciales.";
   if (error === "login_failed") return "No se pudo iniciar sesión.";
   if (error === "signup_failed") return "No se pudo crear la cuenta.";
@@ -14,6 +15,9 @@ function messageFor(error?: string, notice?: string) {
   if (error === "expense_failed") return "No se pudo guardar el gasto.";
   if (error === "sale_failed") return "No se pudo guardar la venta.";
   if (error === "profile_failed") return "No se pudo actualizar el perfil.";
+  if (error === "rate_limited") {
+    return retryAfter ? `Demasiados intentos. Intenta de nuevo en ${retryAfter} segundos.` : "Demasiados intentos. Intenta más tarde.";
+  }
   if (notice === "account_created") return "Cuenta creada. Ahora puedes iniciar sesión.";
   return "Acceso protegido por Supabase Auth y RLS.";
 }
@@ -22,6 +26,7 @@ type Props = {
   searchParams?: {
     error?: string;
     notice?: string;
+    retry_after?: string;
   };
 };
 
@@ -33,13 +38,14 @@ export default async function LoginPage({ searchParams }: Props) {
 
   const error = searchParams?.error;
   const notice = searchParams?.notice;
+  const retryAfter = searchParams?.retry_after;
 
   return (
     <main className="auth-shell">
       <section className="auth-card auth-card-login">
         <p className="eyebrow">TRABIX / Supabase-first</p>
         <h1>Acceso de admin y embajador.</h1>
-        <p className="hero-copy">{messageFor(error, notice)}</p>
+        <p className="hero-copy">{messageFor(error, notice, retryAfter)}</p>
 
         <div className="auth-grid">
           <div className="auth-panel">
@@ -48,33 +54,11 @@ export default async function LoginPage({ searchParams }: Props) {
               <li>Sesión firmada por Supabase Auth.</li>
               <li>Redirección por rol con middleware.</li>
               <li>Acceso a datos limitado por RLS.</li>
+              <li>Rate limiting con Redis para login y embajador.</li>
             </ul>
           </div>
 
-          <form className="auth-form" action="/api/auth/session" method="post">
-            <label className="field">
-              <span>Correo</span>
-              <input className="input" type="email" name="email" placeholder="tu@trabix.com" required />
-            </label>
-            <label className="field">
-              <span>Contraseña</span>
-              <input className="input" type="password" name="password" placeholder="••••••••" required />
-            </label>
-
-            <div className="button-row">
-              <button className="button button-primary" type="submit" name="mode" value="login">
-                Entrar
-              </button>
-              <button className="button button-secondary" type="submit" name="mode" value="signup">
-                Crear cuenta
-              </button>
-            </div>
-
-            <p className="auth-footnote">
-              El primer usuario registrado queda como admin automático. Después puedes promover o desactivar perfiles
-              desde Supabase.
-            </p>
-          </form>
+          <LoginForm initialMessage={messageFor(error, notice, retryAfter)} />
         </div>
       </section>
     </main>

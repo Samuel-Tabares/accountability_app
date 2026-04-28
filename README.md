@@ -1,6 +1,6 @@
 # TRABIX Granizados
 
-Version `0.2.0`
+Version `0.3.0`
 
 TRABIX is a Next.js + Supabase app with two protected experiences:
 
@@ -14,7 +14,7 @@ The app uses Supabase Auth for sessions, Supabase Postgres for data, and RLS for
 - `app/login` handles sign in and sign up.
 - `app/admin` is the admin dashboard.
 - `app/embajador` is the embajador dashboard.
-- `middleware.ts` redirects users by session and role.
+- `middleware.ts` redirects users by session and role, and rate-limits embajador navigation.
 - `app/api/*` contains authenticated route handlers for login, logout, sales, expenses, and profile updates.
 - `supabase/migrations/0001_init.sql` defines the local schema, auth trigger, and RLS policies.
 
@@ -53,6 +53,15 @@ docker compose up --build
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+## Abuse Protection
+
+- Login requests are rate-limited by IP and by email/IP pair with Upstash Redis.
+- Embajador page loads and embajador sales submissions are rate-limited by authenticated user ID plus IP.
+- When login is rate-limited, the API returns `429 Too Many Requests` and the login form shows the retry window.
+- If Redis is temporarily unavailable, login fails closed and embajador navigation is allowed to preserve availability.
 
 ## Release And Traceability
 

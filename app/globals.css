@@ -1201,6 +1201,16 @@ button {
   color: var(--muted);
 }
 
+.auth-banner {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 216, 108, 0.18);
+  background: rgba(255, 216, 108, 0.08);
+  color: var(--text);
+  line-height: 1.45;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;

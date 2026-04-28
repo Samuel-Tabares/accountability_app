@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dashboardPathForRole } from "@/src/lib/auth";
 import { createSupabaseMiddlewareClient } from "@/src/lib/supabase/middleware";
+import { createRateLimitHtmlResponse, rateLimitEmbajador } from "@/src/lib/rate-limit";
 
 function withRedirect(request: NextRequest, path: string, error?: string) {
   const url = new URL(path, request.url);
@@ -59,6 +60,16 @@ export async function middleware(request: NextRequest) {
 
   if (pathname.startsWith("/embajador") && profile.role !== "embajador") {
     return withRedirect(request, dashboardPathForRole(profile.role), "not_authorized");
+  }
+
+  if (pathname.startsWith("/embajador") && profile.role === "embajador") {
+    const embajadorLimit = await rateLimitEmbajador(request, user.id);
+    if (!embajadorLimit.allowed) {
+      return createRateLimitHtmlResponse(
+        "Has alcanzado el límite temporal de acceso al panel de embajador.",
+        embajadorLimit.retryAfterSeconds
+      );
+    }
   }
 
   return NextResponse.next();

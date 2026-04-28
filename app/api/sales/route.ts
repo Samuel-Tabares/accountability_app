@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dashboardPathForRole } from "@/src/lib/auth";
 import { createSupabaseRouteClient } from "@/src/lib/supabase/route";
+import { createRateLimitHtmlResponse, rateLimitEmbajador } from "@/src/lib/rate-limit";
 
 function setRedirect(response: NextResponse, request: NextRequest, fallback: string, error?: string) {
   const target = request.headers.get("referer") ?? new URL(fallback, request.url).toString();
@@ -29,6 +30,16 @@ export async function POST(request: NextRequest) {
   if (!profile || !profile.is_active) {
     await supabase.auth.signOut();
     return setRedirect(response, request, "/login", "profile_inactive");
+  }
+
+  if (profile.role === "embajador") {
+    const embajadorLimit = await rateLimitEmbajador(request, user.id);
+    if (!embajadorLimit.allowed) {
+      return createRateLimitHtmlResponse(
+        "Has alcanzado el límite temporal de acciones para embajadores.",
+        embajadorLimit.retryAfterSeconds
+      );
+    }
   }
 
   const amount = Number(formData.get("amount"));
