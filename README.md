@@ -38,6 +38,8 @@ supabase start
 supabase db reset
 ```
 
+The Supabase project is configured for Postgres `17` in `supabase/config.toml`.
+
 4. Run the app.
 
 ```bash

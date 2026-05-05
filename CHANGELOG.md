@@ -15,6 +15,7 @@
 - Admin sales now calculate and store pricing, discount, commission, cost, profit, margin, and pricing-version snapshots on the backend.
 - Production lots and pricing settings now persist in Supabase instead of remaining visual-only dashboard state.
 - Existing sales keep their stored snapshots, so future pricing changes affect only new records.
+- Supabase local configuration now matches the remote Postgres 17 project.
 
 ## [0.5.0] - 2026-05-04
 
