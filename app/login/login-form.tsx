@@ -34,6 +34,7 @@ export function LoginForm({ initialMessage }: Props) {
       const response = await fetch("/api/auth/session", {
         method: "POST",
         body: formData,
+        credentials: "include",
         headers: {
           Accept: "application/json"
         }

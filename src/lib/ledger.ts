@@ -292,9 +292,9 @@ export function calculateLedger(state: AppState): CalculatedState {
       clientSavings
     } = resolveStoredWholesaleSnapshot(state.settings, ambassador, sale, new Date(sale.createdAt));
     const consumption = fifoConsume(batches, saleUnitsConsumed(sale), resolvedVariant);
-    const costOfGoods = consumption.cost;
-    const grossProfit = sale.priceTotal - costOfGoods;
-    const margin = sale.priceTotal > 0 ? grossProfit / sale.priceTotal : 0;
+    const costOfGoods = sale.costOfGoods ?? consumption.cost;
+    const grossProfit = sale.grossProfit ?? sale.priceTotal - costOfGoods;
+    const margin = sale.margin ?? (sale.priceTotal > 0 ? grossProfit / sale.priceTotal : 0);
 
     return {
       ...sale,

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dashboardPathForRole } from "@/src/lib/auth";
-import { createSupabaseMiddlewareClient } from "@/src/lib/supabase/middleware";
 import { createRateLimitHtmlResponse, rateLimitEmbajador } from "@/src/lib/rate-limit";
+import { readSupabaseSessionCookie } from "@/src/lib/supabase/session-cookie";
+
+const APP_SESSION_COOKIE = "trabix-session";
+
+function dashboardPathForRole(role: "admin" | "embajador") {
+  return role === "admin" ? "/admin" : "/embajador";
+}
 
 function withRedirect(request: NextRequest, path: string, error?: string) {
   const url = new URL(path, request.url);
@@ -13,57 +18,32 @@ function withRedirect(request: NextRequest, path: string, error?: string) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const supabase = createSupabaseMiddlewareClient(request);
-
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const session = readSupabaseSessionCookie(request.cookies);
+  const appSessionExists = Boolean(request.cookies.get(APP_SESSION_COOKIE)?.value);
+  const userId = session?.userId ?? (appSessionExists ? "app-session" : undefined);
+  const role = session?.role === "admin" ? "admin" : session?.role === "embajador" ? "embajador" : null;
 
   if (pathname === "/") {
-    if (!user) {
+    if (!userId) {
       return withRedirect(request, "/login");
     }
-
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-    if (!profile || !profile.is_active) {
-      return withRedirect(request, "/login", "profile_inactive");
-    }
-
-    return withRedirect(request, dashboardPathForRole(profile.role));
+    return withRedirect(request, dashboardPathForRole(role ?? "embajador"));
   }
 
-  if (pathname === "/login") {
-    if (!user) {
-      return NextResponse.next();
-    }
-
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-    if (!profile || !profile.is_active) {
-      return withRedirect(request, "/login", "profile_inactive");
-    }
-
-    return withRedirect(request, dashboardPathForRole(profile.role));
+  if (pathname === "/login" || pathname === "/cambiar-contrasena") {
+    return NextResponse.next();
   }
 
-  if (!user) {
+  if (!userId) {
     return withRedirect(request, "/login", "not_authenticated");
   }
 
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-  if (!profile || !profile.is_active) {
-    return withRedirect(request, "/login", "profile_inactive");
+  if (!role) {
+    return NextResponse.next();
   }
 
-  if (pathname.startsWith("/admin") && profile.role !== "admin") {
-    return withRedirect(request, dashboardPathForRole(profile.role), "not_authorized");
-  }
-
-  if (pathname.startsWith("/embajador") && profile.role !== "embajador") {
-    return withRedirect(request, dashboardPathForRole(profile.role), "not_authorized");
-  }
-
-  if (pathname.startsWith("/embajador") && profile.role === "embajador") {
-    const embajadorLimit = await rateLimitEmbajador(request, user.id);
+  if (pathname.startsWith("/embajador") && role === "embajador") {
+    const embajadorLimit = await rateLimitEmbajador(request, userId);
     if (!embajadorLimit.allowed) {
       return createRateLimitHtmlResponse(
         "Has alcanzado el límite temporal de acceso al panel de embajador.",

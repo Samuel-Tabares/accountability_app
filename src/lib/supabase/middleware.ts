@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import type { NextRequest } from "next/server";
+import { createSupabaseAdminClient } from "./admin";
 
 function envOrThrow(name: string) {
   const value = process.env[name];
@@ -21,4 +22,8 @@ export function createSupabaseMiddlewareClient(request: NextRequest) {
       }
     }
   });
+}
+
+export function createSupabaseMiddlewareAdminClient() {
+  return createSupabaseAdminClient();
 }

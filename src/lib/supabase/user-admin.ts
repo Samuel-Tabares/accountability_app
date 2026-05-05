@@ -18,6 +18,8 @@ export type ProfileUpsertInput = {
   phone?: string | null;
   role: AppRole;
   ambassadorId?: string | null;
+  level?: "nivel0" | "plata" | "oro" | "diamante";
+  mustChangePassword?: boolean;
   isActive?: boolean;
 };
 
@@ -85,6 +87,8 @@ export async function upsertProfile(admin: any, input: ProfileUpsertInput) {
       phone: input.phone ?? null,
       role: input.role,
       ambassador_id: input.ambassadorId ?? null,
+      level: input.level ?? "nivel0",
+      must_change_password: input.mustChangePassword ?? false,
       is_active: input.isActive ?? true
     },
     {

@@ -15,8 +15,8 @@ const sans = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "TRABIX | Auth y dashboards",
-  description: "Aplicación Next.js con Supabase Auth, dashboards por rol y RLS."
+  title: "TRABIX | Control de ventas y embajadores",
+  description: "Panel operativo para ventas de granizados, inventario, embajadores y finanzas."
 };
 
 export default function RootLayout({

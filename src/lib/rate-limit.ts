@@ -126,8 +126,8 @@ export async function rateLimitLogin(request: NextRequest, identifier: string) {
   const normalizedIdentifier = normalizeLoginIdentifier(identifier);
 
   const [ipDecision, identifierDecision] = await Promise.all([
-    evaluateLimit("login-ip", 5, "10 m", ip),
-    evaluateLimit("login-identifier", 3, "15 m", `${normalizedIdentifier}:${ip}`)
+    evaluateLimit("login-ip", 20, "10 m", ip),
+    evaluateLimit("login-identifier", 5, "15 m", `${normalizedIdentifier}:${ip}`)
   ]);
 
   if (ipDecision.allowed && identifierDecision.allowed) {

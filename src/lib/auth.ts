@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import type { AppRole, ProfileRow } from "./supabase/types";
+import { readAppSessionCookie } from "./app-session-cookie";
+import { createSupabaseAdminClient } from "./supabase/admin";
 import { createSupabaseServerClient } from "./supabase/server";
+import { readSupabaseSessionCookie } from "./supabase/session-cookie";
 
 export type AuthContext = {
   userId: string;
@@ -17,27 +21,24 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  const cookieStore = await cookies();
+  const appSession = readAppSessionCookie(cookieStore);
+  const session = readSupabaseSessionCookie(cookieStore);
+  const userId = user?.id ?? appSession?.userId ?? session?.userId;
+
+  if (!userId) {
     return null;
   }
 
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error || !profile) {
-    return null;
-  }
-
-  if (!profile.is_active) {
+  const profileClient = user && user.id === userId ? supabase : createSupabaseAdminClient();
+  const { data: profile } = await profileClient.from("profiles").select("*").eq("id", userId).maybeSingle();
+  if (!profile || !profile.is_active) {
     return null;
   }
 
   return {
-    userId: user.id,
-    profile
+    userId,
+    profile: profile as ProfileRow
   };
 }
 
@@ -45,6 +46,10 @@ export async function requireAuthContext(expectedRole?: AppRole) {
   const auth = await getAuthContext();
   if (!auth) {
     redirect("/login");
+  }
+
+  if (auth.profile.must_change_password) {
+    redirect("/cambiar-contrasena" as any);
   }
 
   if (expectedRole && auth.profile.role !== expectedRole) {

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildAuthAliasEmail, normalizeHandle } from "@/src/lib/identity";
 import { dashboardPathForRole } from "@/src/lib/auth";
 import { createRateLimitHtmlResponse, rateLimitLogin } from "@/src/lib/rate-limit";
+import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
 import { createSupabaseRouteClient } from "@/src/lib/supabase/route";
+import { setAppSessionCookie } from "@/src/lib/app-session-cookie";
 
 function wantsJson(request: NextRequest) {
   return request.headers.get("accept")?.includes("application/json") ?? false;
@@ -133,7 +135,8 @@ export async function POST(request: NextRequest) {
     return redirectResponse(request, "/login", "login_failed");
   }
 
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
+  const adminClient = createSupabaseAdminClient();
+  const { data: profile } = await adminClient.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
   if (!profile) {
     await supabase.auth.signOut();
     const message = loginFailureMessage("profile_missing");
@@ -148,7 +151,7 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  const redirectTo = dashboardPathForRole(profile.role);
+  const redirectTo = profile.must_change_password ? "/cambiar-contrasena" : dashboardPathForRole(profile.role);
   if (jsonMode) {
     const response = jsonResponse(
       {
@@ -157,11 +160,12 @@ export async function POST(request: NextRequest) {
       },
       200
     );
-    copySetCookies(cookieResponse, response);
+    setAppSessionCookie(response, data.user.id);
     return response;
   }
 
   const response = redirectResponse(request, redirectTo);
   copySetCookies(cookieResponse, response);
+  setAppSessionCookie(response, data.user.id);
   return response;
 }

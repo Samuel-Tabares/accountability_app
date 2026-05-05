@@ -1,4 +1,8 @@
 export type AppRole = "admin" | "embajador";
+export type Level = "nivel0" | "plata" | "oro" | "diamante";
+export type ProductVariant = "withAlcohol" | "withoutAlcohol";
+export type SaleType = "unit" | "promo" | "gift" | "singleNoAlcohol" | "giftNoAlcohol" | "wholesale";
+export type ExpenseType = "monthly" | "oneTime" | "commission" | "discount";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -14,34 +18,19 @@ export type Database = {
           phone: string | null;
           role: AppRole;
           ambassador_id: string | null;
+          level: Level;
+          must_change_password: boolean;
+          password_updated_at: string | null;
+          password_reset_at: string | null;
           is_active: boolean;
           created_at: string;
           updated_at: string;
         };
-        Insert: {
-          id?: string;
+        Insert: Partial<Database["public"]["Tables"]["profiles"]["Row"]> & {
           email: string;
           username: string;
-          full_name?: string | null;
-          phone?: string | null;
-          role?: AppRole;
-          ambassador_id?: string | null;
-          is_active?: boolean;
-          created_at?: string;
-          updated_at?: string;
         };
-        Update: {
-          id?: string;
-          email?: string;
-          username?: string;
-          full_name?: string | null;
-          phone?: string | null;
-          role?: AppRole;
-          ambassador_id?: string | null;
-          is_active?: boolean;
-          created_at?: string;
-          updated_at?: string;
-        };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Row"]>;
         Relationships: [];
       };
       sales: {
@@ -53,25 +42,27 @@ export type Database = {
           amount: number;
           quantity: number;
           note: string | null;
+          sale_type: SaleType;
+          wholesale_variant: ProductVariant | null;
+          pricing_version_id: string | null;
+          price_total: number | null;
+          wholesale_discount_pct: number;
+          wholesale_discount_value: number;
+          wholesale_net_total: number | null;
+          wholesale_base_commission_pct: number;
+          wholesale_boost_bonus_pct: number;
+          commission_rate: number;
+          commission_value: number;
+          cost_of_goods: number;
+          gross_profit: number | null;
+          margin: number;
         };
-        Insert: {
-          id?: string;
-          created_at?: string;
-          created_by?: string;
-          ambassador_profile_id?: string | null;
+        Insert: Partial<Database["public"]["Tables"]["sales"]["Row"]> & {
+          created_by: string;
           amount: number;
           quantity: number;
-          note?: string | null;
         };
-        Update: {
-          id?: string;
-          created_at?: string;
-          created_by?: string;
-          ambassador_profile_id?: string | null;
-          amount?: number;
-          quantity?: number;
-          note?: string | null;
-        };
+        Update: Partial<Database["public"]["Tables"]["sales"]["Row"]>;
         Relationships: [
           {
             foreignKeyName: "sales_ambassador_profile_id_fkey";
@@ -91,28 +82,16 @@ export type Database = {
           category: string;
           description: string;
           amount: number;
-          expense_type: "monthly" | "oneTime" | "commission" | "discount";
+          expense_type: ExpenseType;
         };
-        Insert: {
-          id?: string;
-          created_at?: string;
-          created_by?: string;
-          ambassador_profile_id?: string | null;
+        Insert: Partial<Database["public"]["Tables"]["expenses"]["Row"]> & {
+          created_by: string;
           category: string;
           description: string;
           amount: number;
-          expense_type: "monthly" | "oneTime" | "commission" | "discount";
+          expense_type: ExpenseType;
         };
-        Update: {
-          id?: string;
-          created_at?: string;
-          created_by?: string;
-          ambassador_profile_id?: string | null;
-          category?: string;
-          description?: string;
-          amount?: number;
-          expense_type?: "monthly" | "oneTime" | "commission" | "discount";
-        };
+        Update: Partial<Database["public"]["Tables"]["expenses"]["Row"]>;
         Relationships: [
           {
             foreignKeyName: "expenses_ambassador_profile_id_fkey";
@@ -122,6 +101,100 @@ export type Database = {
             referencedColumns: ["id"];
           }
         ];
+      };
+      pricing_versions: {
+        Row: {
+          id: string;
+          created_at: string;
+          created_by: string | null;
+          is_active: boolean;
+          unit_with_alcohol_price: number;
+          unit_no_alcohol_price: number;
+          promo_package_price: number;
+          gift_with_alcohol_price: number;
+          gift_no_alcohol_price: number;
+          boost_bonus_pct: number;
+        };
+        Insert: Partial<Database["public"]["Tables"]["pricing_versions"]["Row"]> & {
+          unit_with_alcohol_price: number;
+          unit_no_alcohol_price: number;
+          promo_package_price: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["pricing_versions"]["Row"]>;
+        Relationships: [];
+      };
+      pricing_wholesale_tiers: {
+        Row: {
+          id: string;
+          pricing_version_id: string;
+          variant: ProductVariant;
+          min_quantity: number;
+          unit_price: number;
+          commission_pct: number;
+          client_discount_pct: number;
+        };
+        Insert: Partial<Database["public"]["Tables"]["pricing_wholesale_tiers"]["Row"]> & {
+          pricing_version_id: string;
+          variant: ProductVariant;
+          min_quantity: number;
+          unit_price: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["pricing_wholesale_tiers"]["Row"]>;
+        Relationships: [];
+      };
+      production_batches: {
+        Row: {
+          id: string;
+          created_at: string;
+          created_by: string | null;
+          label: string;
+          variant: ProductVariant;
+          units_produced: number;
+          total_cost: number;
+          notes: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["production_batches"]["Row"]> & {
+          label: string;
+          variant: ProductVariant;
+          units_produced: number;
+          total_cost: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["production_batches"]["Row"]>;
+        Relationships: [];
+      };
+      production_batch_items: {
+        Row: {
+          id: string;
+          batch_id: string;
+          kind: "granizado" | "other";
+          name: string;
+          quantity: number | null;
+          unit_price: number;
+        };
+        Insert: Partial<Database["public"]["Tables"]["production_batch_items"]["Row"]> & {
+          batch_id: string;
+          kind: "granizado" | "other";
+          name: string;
+          unit_price: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["production_batch_items"]["Row"]>;
+        Relationships: [];
+      };
+      sale_batch_consumptions: {
+        Row: {
+          id: string;
+          sale_id: string;
+          batch_id: string | null;
+          units: number;
+          cost: number;
+        };
+        Insert: Partial<Database["public"]["Tables"]["sale_batch_consumptions"]["Row"]> & {
+          sale_id: string;
+          units: number;
+          cost: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["sale_batch_consumptions"]["Row"]>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
@@ -134,3 +207,8 @@ export type Database = {
 export type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 export type SaleRow = Database["public"]["Tables"]["sales"]["Row"];
 export type ExpenseRow = Database["public"]["Tables"]["expenses"]["Row"];
+export type PricingVersionRow = Database["public"]["Tables"]["pricing_versions"]["Row"];
+export type PricingWholesaleTierRow = Database["public"]["Tables"]["pricing_wholesale_tiers"]["Row"];
+export type ProductionBatchRow = Database["public"]["Tables"]["production_batches"]["Row"];
+export type ProductionBatchItemRow = Database["public"]["Tables"]["production_batch_items"]["Row"];
+export type SaleBatchConsumptionRow = Database["public"]["Tables"]["sale_batch_consumptions"]["Row"];

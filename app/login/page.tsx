@@ -22,22 +22,26 @@ function messageFor(error?: string, notice?: string, retryAfter?: string) {
 }
 
 type Props = {
-  searchParams?: {
+  searchParams?: Promise<{
     error?: string;
     notice?: string;
     retry_after?: string;
-  };
+  }>;
 };
 
 export default async function LoginPage({ searchParams }: Props) {
   const auth = await getAuthContext();
   if (auth) {
+    if (auth.profile.must_change_password) {
+      redirect("/cambiar-contrasena" as any);
+    }
     redirect(dashboardPathForRole(auth.profile.role));
   }
 
-  const error = searchParams?.error;
-  const notice = searchParams?.notice;
-  const retryAfter = searchParams?.retry_after;
+  const params = (await searchParams) ?? {};
+  const error = params.error;
+  const notice = params.notice;
+  const retryAfter = params.retry_after;
 
   return (
     <main className="auth-shell">

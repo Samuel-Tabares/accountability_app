@@ -1,29 +1,50 @@
 import { formatCurrency, formatDate } from "@/src/lib/ledger";
 import { requireAuthContext } from "@/src/lib/auth";
-import { createSupabaseServerClient } from "@/src/lib/supabase/server";
-import type { ExpenseRow, SaleRow } from "@/src/lib/supabase/types";
+import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
+import type { SaleRow } from "@/src/lib/supabase/types";
 
-function sum(values: Array<number | string>) {
-  return values.reduce<number>((total, value) => total + Number(value), 0);
+function sum(values: Array<number | string | null>) {
+  return values.reduce<number>((total, value) => total + Number(value ?? 0), 0);
+}
+
+function levelLabel(level: string) {
+  const labels: Record<string, string> = {
+    nivel0: "Nivel 0",
+    plata: "Plata",
+    oro: "Oro",
+    diamante: "Diamante"
+  };
+
+  return labels[level] ?? "Nivel 0";
+}
+
+function variantLabel(variant?: string | null) {
+  return variant === "withoutAlcohol" ? "Sin licor" : "Con licor";
 }
 
 export default async function EmbajadorPage() {
   const auth = await requireAuthContext("embajador");
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
 
-  const [salesResult, expensesResult] = await Promise.all([
-    supabase.from("sales").select("*").eq("ambassador_profile_id", auth.userId).order("created_at", { ascending: false }),
-    supabase.from("expenses").select("*").eq("ambassador_profile_id", auth.userId).order("created_at", { ascending: false })
-  ]);
+  const salesResult = await supabase
+    .from("sales")
+    .select("*")
+    .eq("ambassador_profile_id", auth.userId)
+    .eq("sale_type", "wholesale")
+    .order("created_at", { ascending: false });
 
   const sales = (salesResult.data ?? []) as SaleRow[];
-  const expenses = (expensesResult.data ?? []) as ExpenseRow[];
+  const unitsSold = sum(sales.map((sale) => sale.quantity));
+  const grossSold = sum(sales.map((sale) => sale.price_total ?? sale.amount));
+  const netSold = sum(sales.map((sale) => sale.amount));
+  const commissions = sum(sales.map((sale) => sale.commission_value));
+  const clientSavings = sum(sales.map((sale) => sale.wholesale_discount_value));
 
   const stats = [
-    { label: "Ventas propias", value: String(sales.length), detail: `${formatCurrency(sum(sales.map((sale) => sale.amount)))} en ingresos` },
-    { label: "Gastos asociados", value: String(expenses.length), detail: `${formatCurrency(sum(expenses.map((expense) => expense.amount)))} vinculados` },
-    { label: "Código", value: auth.profile.ambassador_id ?? auth.profile.username, detail: auth.profile.username },
-    { label: "Estado", value: auth.profile.is_active ? "Activo" : "Inactivo", detail: auth.profile.full_name ?? "Sin nombre" }
+    { label: "Ventas asignadas", value: String(sales.length), detail: `${unitsSold} unidades mayoristas` },
+    { label: "Total vendido", value: formatCurrency(netSold), detail: `${formatCurrency(grossSold)} antes de descuentos` },
+    { label: "Comisiones", value: formatCurrency(commissions), detail: "Acumuladas por ventas asignadas" },
+    { label: "Ahorro clientes", value: formatCurrency(clientSavings), detail: "Descuentos generados por tu código" }
   ];
 
   return (
@@ -31,10 +52,9 @@ export default async function EmbajadorPage() {
       <header className="page-hero">
         <div>
           <p className="eyebrow">Embajador dashboard</p>
-          <h1>Panel personal con datos limitados por RLS.</h1>
+          <h1>{auth.profile.full_name ?? auth.profile.username}</h1>
           <p className="hero-copy">
-            Esta vista solo consulta lo que pertenece a tu perfil. El servidor valida la sesión y Supabase bloquea
-            cualquier lectura ajena.
+            Resumen de ventas mayoristas asignadas, comisiones, ahorro para clientes e información de tu perfil.
           </p>
         </div>
         <form action="/api/auth/logout" method="post">
@@ -58,44 +78,42 @@ export default async function EmbajadorPage() {
         <section className="panel">
           <header className="section-head">
             <div>
-              <p className="eyebrow">Nueva venta</p>
-              <h2>Registrar tu venta</h2>
-            </div>
-          </header>
-          <form className="stack-form" action="/api/sales" method="post">
-            <label className="field">
-              <span>Monto</span>
-              <input className="input" type="number" min="0" step="1" name="amount" required />
-            </label>
-            <label className="field">
-              <span>Cantidad</span>
-              <input className="input" type="number" min="1" step="1" name="quantity" defaultValue="1" required />
-            </label>
-            <label className="field">
-              <span>Nota</span>
-              <textarea className="input input-textarea" name="note" rows={3} />
-            </label>
-            <button className="button button-primary" type="submit">
-              Guardar venta
-            </button>
-          </form>
-        </section>
-
-        <section className="panel">
-          <header className="section-head">
-            <div>
-              <p className="eyebrow">Resumen personal</p>
-              <h2>Perfil y accesos</h2>
+              <p className="eyebrow">Perfil</p>
+              <h2>Información básica</h2>
             </div>
           </header>
           <div className="profile-card">
             <div>
               <strong>{auth.profile.full_name ?? auth.profile.username}</strong>
-              <p>{auth.profile.username}</p>
+              <p>{auth.profile.phone ?? "Sin teléfono"}</p>
             </div>
             <div>
-              <span className="chip">{auth.profile.role}</span>
+              <span className="chip">Código {auth.profile.ambassador_id ?? auth.profile.username}</span>
+              <span className="chip">{levelLabel(auth.profile.level)}</span>
               <span className="chip">{auth.profile.is_active ? "activo" : "inactivo"}</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <header className="section-head">
+            <div>
+              <p className="eyebrow">Resumen</p>
+              <h2>Rendimiento acumulado</h2>
+            </div>
+          </header>
+          <div className="mini-grid">
+            <div className="mini-box">
+              <span>Ventas netas</span>
+              <strong>{formatCurrency(netSold)}</strong>
+            </div>
+            <div className="mini-box">
+              <span>Comisión promedio</span>
+              <strong>{netSold > 0 ? `${((commissions / netSold) * 100).toFixed(1)}%` : "0%"}</strong>
+            </div>
+            <div className="mini-box">
+              <span>Unidades</span>
+              <strong>{unitsSold}</strong>
             </div>
           </div>
         </section>
@@ -105,38 +123,27 @@ export default async function EmbajadorPage() {
         <section className="panel">
           <header className="section-head">
             <div>
-              <p className="eyebrow">Tus ventas</p>
-              <h2>Últimos registros</h2>
+              <p className="eyebrow">Ventas asignadas</p>
+              <h2>Detalle mayorista</h2>
             </div>
           </header>
           <div className="table-list">
-            {sales.map((sale) => (
-              <div className="table-row" key={sale.id}>
-                <strong>{formatCurrency(sale.amount)}</strong>
-                <span className="table-meta">{sale.quantity} uds</span>
-                <span className="table-meta">{sale.note ?? "Sin nota"}</span>
-                <span className="table-meta">{formatDate(sale.created_at)}</span>
+            {sales.length > 0 ? (
+              sales.map((sale) => (
+                <div className="table-row" key={sale.id}>
+                  <strong>{formatCurrency(sale.amount)}</strong>
+                  <span className="table-meta">{sale.quantity} uds · {variantLabel(sale.wholesale_variant)}</span>
+                  <span className="table-meta">Comisión {formatCurrency(sale.commission_value)}</span>
+                  <span className="table-meta">Ahorro {formatCurrency(sale.wholesale_discount_value)}</span>
+                  <span className="table-meta">{formatDate(sale.created_at)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="table-row">
+                <strong>Sin ventas asignadas</strong>
+                <span className="table-meta">Cuando el admin asigne ventas mayoristas a tu código aparecerán aquí.</span>
               </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel">
-          <header className="section-head">
-            <div>
-              <p className="eyebrow">Tus gastos</p>
-              <h2>Gastos asociados</h2>
-            </div>
-          </header>
-          <div className="table-list">
-            {expenses.map((expense) => (
-              <div className="table-row" key={expense.id}>
-                <strong>{expense.category}</strong>
-                <span className="table-meta">{formatCurrency(expense.amount)}</span>
-                <span className="table-meta">{expense.description}</span>
-                <span className="table-meta">{formatDate(expense.created_at)}</span>
-              </div>
-            ))}
+            )}
           </div>
         </section>
       </section>

@@ -79,6 +79,10 @@ export type Sale = {
   wholesaleBoostBonusPct?: number;
   commissionRate?: number;
   commissionValue?: number;
+  costOfGoods?: number;
+  grossProfit?: number;
+  margin?: number;
+  pricingVersionId?: string;
   discountExpenseId?: string;
   commissionExpenseId?: string;
   note: string;
