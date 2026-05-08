@@ -47,7 +47,8 @@ function mapAmbassador(profile: ProfileRow): Ambassador {
     name: profileName(profile),
     code: profile.ambassador_id ?? profile.username,
     level: profile.level ?? "nivel0",
-    boostActive: false,
+    boostActive: profile.boost_active ?? false,
+    boostExpiresAt: profile.boost_expires_at ?? undefined,
     active: profile.is_active,
     notes: profile.phone ?? ""
   };
@@ -75,6 +76,7 @@ function mapSale(row: SaleRow, profilesById: Map<string, ProfileRow>): Sale {
     commissionValue: Number(row.commission_value ?? 0),
     costOfGoods: Number(row.cost_of_goods ?? 0),
     grossProfit: Number(row.gross_profit ?? 0),
+    netProfit: row.net_profit == null ? undefined : Number(row.net_profit),
     margin: Number(row.margin ?? 0),
     pricingVersionId: row.pricing_version_id ?? undefined,
     note: row.note ?? ""
@@ -91,6 +93,7 @@ function mapExpense(row: ExpenseRow, profilesById: Map<string, ProfileRow>): Exp
     description: row.description,
     amount: Number(row.amount),
     type: row.expense_type,
+    sourceSaleId: row.source_sale_id ?? undefined,
     ambassadorId: row.ambassador_profile_id ?? undefined,
     ambassadorCode: ambassador?.ambassador_id ?? ambassador?.username
   };

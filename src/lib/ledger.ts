@@ -174,6 +174,10 @@ function saleUnitsConsumed(sale: Pick<Sale, "saleType" | "quantity">) {
   return sale.quantity;
 }
 
+function saleRealTotal(sale: Pick<Sale, "priceTotal" | "wholesaleNetTotal">) {
+  return sale.wholesaleNetTotal ?? sale.priceTotal;
+}
+
 function cloneBatches(state: AppState): BatchRemaining[] {
   return state.batches
     .slice()
@@ -292,9 +296,11 @@ export function calculateLedger(state: AppState): CalculatedState {
       clientSavings
     } = resolveStoredWholesaleSnapshot(state.settings, ambassador, sale, new Date(sale.createdAt));
     const consumption = fifoConsume(batches, saleUnitsConsumed(sale), resolvedVariant);
+    const realTotal = wholesaleNetTotal;
     const costOfGoods = sale.costOfGoods ?? consumption.cost;
-    const grossProfit = sale.grossProfit ?? sale.priceTotal - costOfGoods;
-    const margin = sale.margin ?? (sale.priceTotal > 0 ? grossProfit / sale.priceTotal : 0);
+    const grossProfit = sale.grossProfit ?? realTotal - costOfGoods;
+    const netProfit = sale.netProfit ?? grossProfit - commissionValue;
+    const margin = sale.margin ?? (realTotal > 0 ? netProfit / realTotal : 0);
 
     return {
       ...sale,
@@ -305,6 +311,7 @@ export function calculateLedger(state: AppState): CalculatedState {
       clientSavings,
       costOfGoods,
       grossProfit,
+      netProfit,
       margin,
       resolvedVariant,
       displayLabel:
@@ -324,15 +331,9 @@ export function calculateLedger(state: AppState): CalculatedState {
   const commissionExpenses = state.expenses.filter(
     (expense) => expense.type === "commission" && Boolean(expense.sourceSaleId)
   );
-  const discountExpenses = state.expenses.filter(
-    (expense) => expense.type === "discount" && Boolean(expense.sourceSaleId)
-  );
   const regularExpenses = state.expenses.filter((expense) => expense.type !== "commission" && expense.type !== "discount");
   const linkedCommissionSaleIds = new Set(
     commissionExpenses.map((expense) => expense.sourceSaleId).filter((sourceSaleId): sourceSaleId is string => Boolean(sourceSaleId))
-  );
-  const linkedDiscountSaleIds = new Set(
-    discountExpenses.map((expense) => expense.sourceSaleId).filter((sourceSaleId): sourceSaleId is string => Boolean(sourceSaleId))
   );
   const legacyCommissionTotal = sales.reduce((sum, sale) => {
     if (sale.saleType !== "wholesale" || !(sale.ambassadorId || sale.ambassadorCode)) {
@@ -345,27 +346,16 @@ export function calculateLedger(state: AppState): CalculatedState {
 
     return sum + sale.commissionValue;
   }, 0);
-  const legacyDiscountTotal = sales.reduce((sum, sale) => {
-    if (sale.saleType !== "wholesale" || !(sale.ambassadorId || sale.ambassadorCode)) {
-      return sum;
-    }
-
-    if (linkedDiscountSaleIds.has(sale.id)) {
-      return sum;
-    }
-
-    return sum + sale.clientSavings;
-  }, 0);
   const commissionExpensesTotal = commissionExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const discountExpensesTotal = discountExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   const regularExpensesTotal = regularExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const expensesTotal = regularExpensesTotal + commissionExpensesTotal + discountExpensesTotal + legacyCommissionTotal + legacyDiscountTotal;
-  const revenue = sales.reduce((sum, sale) => sum + sale.priceTotal, 0);
+  const expensesTotal = regularExpensesTotal + commissionExpensesTotal + legacyCommissionTotal;
+  const baseSales = sales.reduce((sum, sale) => sum + sale.priceTotal, 0);
+  const revenue = sales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
   const costOfGoods = sales.reduce((sum, sale) => sum + sale.costOfGoods, 0);
   const commissions = commissionExpensesTotal + legacyCommissionTotal;
-  const discounts = discountExpensesTotal + legacyDiscountTotal;
+  const discounts = Math.max(0, baseSales - revenue);
   const grossProfit = revenue - costOfGoods;
-  const netProfit = grossProfit - expensesTotal;
+  const netProfit = grossProfit - commissions - regularExpensesTotal;
   const unitsSold = sales.reduce((sum, sale) => sum + saleUnitsConsumed(sale), 0);
   const unitsProduced = state.batches.reduce((sum, batch) => sum + batch.unitsProduced, 0);
   const unitsRemaining = batches.reduce((sum, batch) => sum + batch.unitsRemaining, 0);
@@ -376,11 +366,13 @@ export function calculateLedger(state: AppState): CalculatedState {
     sales,
     totals: {
       investment,
+      baseSales,
       revenue,
       costOfGoods,
       grossProfit,
       commissions,
       discounts,
+      manualExpenses: regularExpensesTotal,
       expenses: expensesTotal,
       netProfit,
       unitsSold,

@@ -1,7 +1,8 @@
+import { LogOut } from "lucide-react";
 import { formatCurrency, formatDate } from "@/src/lib/ledger";
 import { requireAuthContext } from "@/src/lib/auth";
 import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
-import type { SaleRow } from "@/src/lib/supabase/types";
+import type { ProfileRow, SaleRow } from "@/src/lib/supabase/types";
 
 function sum(values: Array<number | string | null>) {
   return values.reduce<number>((total, value) => total + Number(value ?? 0), 0);
@@ -22,6 +23,12 @@ function variantLabel(variant?: string | null) {
   return variant === "withoutAlcohol" ? "Sin licor" : "Con licor";
 }
 
+function boostIsActive(profile: Pick<ProfileRow, "boost_active" | "boost_expires_at">) {
+  if (!profile.boost_active) return false;
+  if (!profile.boost_expires_at) return true;
+  return new Date(profile.boost_expires_at).getTime() > Date.now();
+}
+
 export default async function EmbajadorPage() {
   const auth = await requireAuthContext("embajador");
   const supabase = createSupabaseAdminClient();
@@ -39,34 +46,65 @@ export default async function EmbajadorPage() {
   const netSold = sum(sales.map((sale) => sale.amount));
   const commissions = sum(sales.map((sale) => sale.commission_value));
   const clientSavings = sum(sales.map((sale) => sale.wholesale_discount_value));
+  const commissionAverage = netSold > 0 ? `${((commissions / netSold) * 100).toFixed(1)}%` : "0%";
+  const code = auth.profile.ambassador_id ?? auth.profile.username;
+  const displayName = auth.profile.full_name ?? auth.profile.username;
+  const activeBoost = boostIsActive(auth.profile);
 
   const stats = [
+    { label: "Comisión acumulada", value: formatCurrency(commissions), detail: `${commissionAverage} sobre ventas reales`, featured: true },
     { label: "Ventas asignadas", value: String(sales.length), detail: `${unitsSold} unidades mayoristas` },
-    { label: "Total vendido", value: formatCurrency(netSold), detail: `${formatCurrency(grossSold)} antes de descuentos` },
-    { label: "Comisiones", value: formatCurrency(commissions), detail: "Acumuladas por ventas asignadas" },
+    { label: "Total vendido", value: formatCurrency(grossSold), detail: `${formatCurrency(netSold)} después de descuentos` },
     { label: "Ahorro clientes", value: formatCurrency(clientSavings), detail: "Descuentos generados por tu código" }
   ];
 
   return (
-    <main className="app-shell">
-      <header className="page-hero">
-        <div>
-          <p className="eyebrow">Embajador dashboard</p>
-          <h1>{auth.profile.full_name ?? auth.profile.username}</h1>
-          <p className="hero-copy">
-            Resumen de ventas mayoristas asignadas, comisiones, ahorro para clientes e información de tu perfil.
-          </p>
-        </div>
-        <form action="/api/auth/logout" method="post">
-          <button className="button button-ghost" type="submit">
-            Cerrar sesión
+    <main className="embajador-shell">
+      <section className="embajador-hero">
+        <form action="/api/auth/logout" method="post" className="embajador-logout-form">
+          <button className="embajador-logout" type="submit" aria-label="Cerrar sesión" title="Cerrar sesión">
+            <LogOut size={20} />
           </button>
         </form>
-      </header>
+        <div className="embajador-name-badge">
+          <span>Embajador</span>
+          <strong>{displayName}</strong>
+        </div>
+        <div className="embajador-hero-main">
+          <div className="embajador-hero-copy">
+            <img className="embajador-logo" src="/site-assets/brand/logo-trabix.png" alt="TRABIX Granizados" />
+            <p className="eyebrow">Panel embajador</p>
+            <p className="hero-copy">
+              Tus ventas mayoristas asignadas, comisiones acumuladas y ahorro generado por tu código.
+            </p>
+            <div className="embajador-code">
+              <span>Código</span>
+              <strong>{code}</strong>
+            </div>
+          </div>
+        </div>
 
-      <section className="stat-grid">
+        <div className="embajador-profile-line">
+          <span className="chip">{levelLabel(auth.profile.level)}</span>
+          <span className="chip">{auth.profile.phone ?? "Sin teléfono"}</span>
+        </div>
+      </section>
+
+      <section className={`embajador-boost ${activeBoost ? "embajador-boost-active" : ""}`}>
+        <div>
+          <p className="eyebrow">Boost de comisión</p>
+          <strong>{activeBoost ? "Boost activo" : "Boost inactivo"}</strong>
+        </div>
+        <p>
+          {activeBoost
+            ? `Activo${auth.profile.boost_expires_at ? ` hasta ${formatDate(auth.profile.boost_expires_at)}` : ""}. Tus ventas mayoristas suman un extra temporal en tus comisiones.`
+            : "Cuando esté activo, verás un extra temporal en tus comisiones mayoristas."}
+        </p>
+      </section>
+
+      <section className="embajador-stats" aria-label="Resumen de rendimiento">
         {stats.map((stat) => (
-          <article className="stat-card" key={stat.label}>
+          <article className={`embajador-stat ${stat.featured ? "embajador-stat-featured" : ""}`} key={stat.label}>
             <p>{stat.label}</p>
             <strong>{stat.value}</strong>
             <span>{stat.detail}</span>
@@ -74,78 +112,45 @@ export default async function EmbajadorPage() {
         ))}
       </section>
 
-      <section className="panel-grid">
-        <section className="panel">
-          <header className="section-head">
-            <div>
-              <p className="eyebrow">Perfil</p>
-              <h2>Información básica</h2>
-            </div>
-          </header>
-          <div className="profile-card">
-            <div>
-              <strong>{auth.profile.full_name ?? auth.profile.username}</strong>
-              <p>{auth.profile.phone ?? "Sin teléfono"}</p>
-            </div>
-            <div>
-              <span className="chip">Código {auth.profile.ambassador_id ?? auth.profile.username}</span>
-              <span className="chip">{levelLabel(auth.profile.level)}</span>
-              <span className="chip">{auth.profile.is_active ? "activo" : "inactivo"}</span>
-            </div>
+      <section className="panel embajador-panel">
+        <header className="section-head embajador-section-head">
+          <div>
+            <p className="eyebrow">Ventas asignadas</p>
+            <h2>Detalle mayorista</h2>
+            <p className="section-description">
+              Cada venta muestra el total real, la base antes de descuento, tu comisión y el ahorro del cliente.
+            </p>
           </div>
-        </section>
+          <span className="chip">{unitsSold} unidades</span>
+        </header>
 
-        <section className="panel">
-          <header className="section-head">
-            <div>
-              <p className="eyebrow">Resumen</p>
-              <h2>Rendimiento acumulado</h2>
-            </div>
-          </header>
-          <div className="mini-grid">
-            <div className="mini-box">
-              <span>Ventas netas</span>
-              <strong>{formatCurrency(netSold)}</strong>
-            </div>
-            <div className="mini-box">
-              <span>Comisión promedio</span>
-              <strong>{netSold > 0 ? `${((commissions / netSold) * 100).toFixed(1)}%` : "0%"}</strong>
-            </div>
-            <div className="mini-box">
-              <span>Unidades</span>
-              <strong>{unitsSold}</strong>
-            </div>
-          </div>
-        </section>
-      </section>
-
-      <section className="panel-grid panel-grid-wide">
-        <section className="panel">
-          <header className="section-head">
-            <div>
-              <p className="eyebrow">Ventas asignadas</p>
-              <h2>Detalle mayorista</h2>
-            </div>
-          </header>
-          <div className="table-list">
-            {sales.length > 0 ? (
-              sales.map((sale) => (
-                <div className="table-row" key={sale.id}>
-                  <strong>{formatCurrency(sale.amount)}</strong>
-                  <span className="table-meta">{sale.quantity} uds · {variantLabel(sale.wholesale_variant)}</span>
-                  <span className="table-meta">Comisión {formatCurrency(sale.commission_value)}</span>
-                  <span className="table-meta">Ahorro {formatCurrency(sale.wholesale_discount_value)}</span>
-                  <span className="table-meta">{formatDate(sale.created_at)}</span>
+        <div className="embajador-sales-list">
+          {sales.length > 0 ? (
+            sales.map((sale) => (
+              <article className="embajador-sale-card" key={sale.id}>
+                <div className="embajador-sale-top">
+                  <div>
+                    <strong>{formatCurrency(sale.price_total ?? sale.amount)}</strong>
+                    <span>{formatDate(sale.created_at)}</span>
+                  </div>
+                  <span className="chip">{sale.quantity} uds</span>
                 </div>
-              ))
-            ) : (
-              <div className="table-row">
-                <strong>Sin ventas asignadas</strong>
-                <span className="table-meta">Cuando el admin asigne ventas mayoristas a tu código aparecerán aquí.</span>
-              </div>
-            )}
-          </div>
-        </section>
+                <p>
+                  Después de descuentos: {formatCurrency(sale.amount)} · {variantLabel(sale.wholesale_variant)}
+                </p>
+                <div className="embajador-sale-pills">
+                  <span>Comisión {formatCurrency(sale.commission_value)}</span>
+                  <span>Ahorro {formatCurrency(sale.wholesale_discount_value)}</span>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="embajador-empty">
+              <strong>Sin ventas asignadas</strong>
+              <p>Cuando haya ventas mayoristas asignadas a tu código aparecerán aquí.</p>
+            </div>
+          )}
+        </div>
       </section>
     </main>
   );

@@ -5,17 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   BadgeDollarSign,
-  Bot,
-  Box,
   CheckCircle2,
-  Coins,
+  Factory,
   HandCoins,
   Hammer,
   LogOut,
-  Menu,
-  Plus,
-  ShieldCheck,
-  Users
+  Percent,
+  Plus
 } from "lucide-react";
 import {
   calculateLedger,
@@ -113,12 +109,6 @@ const emptyExpense = {
   amount: 0,
   type: "monthly" as "monthly" | "oneTime"
 };
-
-function shellClassName(active: boolean) {
-  return active
-    ? "tab tab-active"
-    : "tab";
-}
 
 function Section({
   eyebrow,
@@ -239,6 +229,10 @@ function variantLabel(variant: ProductVariant) {
 
 function displayNumber(value: number) {
   return value === 0 ? "" : String(value);
+}
+
+function saleRealTotal(sale: Pick<Sale, "priceTotal" | "wholesaleNetTotal">) {
+  return sale.wholesaleNetTotal ?? sale.priceTotal;
 }
 
 function parseNumber(value: string) {
@@ -466,24 +460,16 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
   const weeklyExpenses = state.expenses.filter((expense) =>
     isWithinRange(expense.createdAt, currentWeekBounds.start, currentWeekBounds.end)
   );
-  const weeklyRevenue = weeklySales.reduce((sum, sale) => sum + sale.priceTotal, 0);
+  const weeklyRevenue = weeklySales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
   const weeklyCostOfGoods = weeklySales.reduce((sum, sale) => sum + sale.costOfGoods, 0);
   const weeklyCommissionExpenses = weeklyExpenses.filter(
     (expense) => expense.type === "commission" && Boolean(expense.sourceSaleId)
-  );
-  const weeklyDiscountExpenses = weeklyExpenses.filter(
-    (expense) => expense.type === "discount" && Boolean(expense.sourceSaleId)
   );
   const weeklyRegularExpenses = weeklyExpenses.filter(
     (expense) => expense.type !== "commission" && expense.type !== "discount"
   );
   const weeklyLinkedCommissionSaleIds = new Set(
     weeklyCommissionExpenses
-      .map((expense) => expense.sourceSaleId)
-      .filter((sourceSaleId): sourceSaleId is string => Boolean(sourceSaleId))
-  );
-  const weeklyLinkedDiscountSaleIds = new Set(
-    weeklyDiscountExpenses
       .map((expense) => expense.sourceSaleId)
       .filter((sourceSaleId): sourceSaleId is string => Boolean(sourceSaleId))
   );
@@ -498,25 +484,11 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
 
     return sum + sale.commissionValue;
   }, 0);
-  const weeklyLegacyDiscountTotal = weeklySales.reduce((sum, sale) => {
-    if (sale.saleType !== "wholesale") {
-      return sum;
-    }
-
-    if (weeklyLinkedDiscountSaleIds.has(sale.id)) {
-      return sum;
-    }
-
-    return sum + sale.clientSavings;
-  }, 0);
-  const weeklyExpenseTotal =
-    weeklyRegularExpenses.reduce((sum, expense) => sum + expense.amount, 0) +
-    weeklyCommissionExpenses.reduce((sum, expense) => sum + expense.amount, 0) +
-    weeklyDiscountExpenses.reduce((sum, expense) => sum + expense.amount, 0) +
-    weeklyLegacyCommissionTotal +
-    weeklyLegacyDiscountTotal;
+  const weeklyManualExpenses = weeklyRegularExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const weeklyCommissions =
+    weeklyCommissionExpenses.reduce((sum, expense) => sum + expense.amount, 0) + weeklyLegacyCommissionTotal;
   const weeklyGrossProfit = weeklyRevenue - weeklyCostOfGoods;
-  const weeklyNetProfit = weeklyGrossProfit - weeklyExpenseTotal;
+  const weeklyNetProfit = weeklyGrossProfit - weeklyCommissions - weeklyManualExpenses;
   const ambassadorOptions = state.ambassadors.filter((ambassador) => ambassador.active);
   const filteredSales = ledger.sales
     .slice()
@@ -803,32 +775,15 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     }
   }
 
-  function toggleAmbassadorBoost(ambassadorId: string) {
-    setState((prev) => ({
-      ...prev,
-      ambassadors: prev.ambassadors.map((ambassador) => {
-        if (ambassador.id !== ambassadorId) {
-          return ambassador;
-        }
-
-        const currentlyActive = isBoostActive(ambassador);
-
-        if (currentlyActive) {
-          return {
-            ...ambassador,
-            boostActive: false,
-            boostExpiresAt: undefined
-          };
-        }
-
-        const boostExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        return {
-          ...ambassador,
-          boostActive: true,
-          boostExpiresAt
-        };
-      })
-    }));
+  async function toggleAmbassadorBoost(ambassadorId: string) {
+    try {
+      await postForm("/api/embajadores/boost", {
+        profile_id: ambassadorId
+      });
+      refreshDashboard();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "No se pudo cambiar el boost.");
+    }
   }
 
   async function resetAmbassadorPassword(ambassador: Ambassador) {
@@ -870,17 +825,6 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     } catch (error) {
       showMessage(error instanceof Error ? error.message : "No se pudo guardar la configuración.");
     }
-  }
-
-  function resetAll() {
-    setSaleForm(emptySale);
-    setBatchForm(emptyBatch);
-    setExpenseForm(emptyExpense);
-    setAmbassadorDraft({});
-    setEditingSaleId(null);
-    setEditingAmbassadorId(null);
-    setCreatedCredentials(null);
-    showMessage("Se limpiaron los formularios. Los datos reales de Supabase no se vacían desde este panel.");
   }
 
   async function signOut() {
@@ -935,7 +879,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
               sale.ambassadorId === ambassador.id ||
               sale.ambassadorCode?.toLowerCase() === ambassador.code.toLowerCase()
           );
-          const revenue = ambassadorSales.reduce((sum, sale) => sum + sale.priceTotal, 0);
+          const revenue = ambassadorSales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
           const commission = ambassadorSales.reduce((sum, sale) => sum + sale.commissionValue, 0);
           const clientSavings = ambassadorSales.reduce((sum, sale) => sum + sale.clientSavings, 0);
           return {
@@ -951,19 +895,10 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
   );
 
   const activeAmbassadorCount = state.ambassadors.filter((ambassador) => ambassador.active).length;
-  const sidebarItems: Array<{ key: ActivePanel; label: string; icon: ReactNode }> = [
-    { key: "sales", label: "Ventas", icon: <BadgeDollarSign size={16} /> },
-    { key: "production", label: "Lotes", icon: <Box size={16} /> },
-    { key: "expenses", label: "Gastos", icon: <Coins size={16} /> },
-    { key: "ambassadors", label: "Embajadores", icon: <Users size={16} /> }
-  ];
-  if (currentRole === "admin") {
-    sidebarItems.push({ key: "settings", label: "Configuración", icon: <Menu size={16} /> });
-  }
   const tabItems: Array<{ key: ActivePanel; label: string }> = [
     { key: "sales", label: "Ventas" },
     { key: "production", label: "Lotes" },
-    { key: "expenses", label: "Gastos" },
+    { key: "expenses", label: "Gastos manuales" },
     { key: "ambassadors", label: "Embajadores" }
   ];
   if (currentRole === "admin") {
@@ -978,66 +913,6 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-card">
-          <div className="brand-top">
-            <div className="brand-mark">
-              <Bot size={18} />
-            </div>
-            <div>
-              <p className="eyebrow">TRABIX</p>
-              <h1>Operación de granizados</h1>
-            </div>
-          </div>
-          <p className="brand-copy">
-            Ventas, embajadores, inventario FIFO, gastos y utilidad en una sola pantalla.
-          </p>
-        </div>
-
-        <nav className="nav-list">
-          {sidebarItems.map(({ key, label, icon }) => (
-            <button
-              key={key}
-              className={shellClassName(panel === key)}
-              onClick={() => setPanel(key as ActivePanel)}
-            >
-              <span>{icon}</span>
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="side-summary">
-          <div className="user-pill">
-            <ShieldCheck size={16} />
-            <div>
-              <strong>{currentUser.name}</strong>
-              <span>Admin</span>
-            </div>
-          </div>
-          <div className="mini-stats">
-            <div>
-              <span>Código</span>
-              <strong>N/A</strong>
-            </div>
-            <div>
-              <span>Boost</span>
-              <strong>Inactivo</strong>
-            </div>
-          </div>
-        </div>
-
-        <div className="sidebar-actions">
-          <Button variant="secondary" onClick={resetAll}>
-            Vaciar todo
-          </Button>
-          <Button variant="ghost" onClick={signOut}>
-            <LogOut size={16} />
-            Cerrar sesión
-          </Button>
-        </div>
-      </aside>
-
       <section className="main-content">
         <header className="hero">
           <MetricCard
@@ -1049,33 +924,74 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
           />
           <MetricCard
             icon={<BadgeDollarSign size={18} />}
-            label="Ingresos"
-            value={formatCurrency(ledger.totals.revenue)}
-            subtext="Todo lo cobrado por ventas."
+            label="Venta base"
+            value={formatCurrency(ledger.totals.baseSales)}
+            subtext="Precio antes de descuentos."
             accent="accent-green"
+          />
+          <MetricCard
+            icon={<BadgeDollarSign size={18} />}
+            label="Ingresos netos"
+            value={formatCurrency(ledger.totals.revenue)}
+            subtext="Dinero realmente cobrado."
+            accent="accent-green"
+          />
+          <MetricCard
+            icon={<Percent size={18} />}
+            label="Descuentos"
+            value={formatCurrency(ledger.totals.discounts)}
+            subtext="Dinero que no se cobró por ventas mayoristas."
+            accent="accent-orange"
+          />
+          <MetricCard
+            icon={<HandCoins size={18} />}
+            label="Comisiones"
+            value={formatCurrency(ledger.totals.commissions)}
+            subtext="Pago acumulado para embajadores."
+            accent="accent-cream"
+          />
+          <MetricCard
+            icon={<Factory size={18} />}
+            label="Costo producción"
+            value={formatCurrency(ledger.totals.costOfGoods)}
+            subtext="Costo FIFO de granizados vendidos."
+            accent="accent-orange"
+          />
+          <MetricCard
+            icon={<Hammer size={18} />}
+            label="Gastos manuales"
+            value={formatCurrency(ledger.totals.manualExpenses)}
+            subtext="Pagos operativos registrados manualmente."
+            accent="accent-cream"
           />
           <MetricCard
             icon={<CheckCircle2 size={18} />}
             label="Utilidad bruta"
             value={formatCurrency(ledger.totals.grossProfit)}
-            subtext="Ingresos brutos menos costo FIFO."
+            subtext="Ingresos menos costo de producción."
             accent="accent-yellow"
           />
           <MetricCard
-            icon={<HandCoins size={18} />}
+            icon={<BadgeDollarSign size={18} />}
             label="Utilidad neta"
             value={formatCurrency(ledger.totals.netProfit)}
-            subtext="Después de descuentos, comisiones y gastos."
+            subtext="Utilidad bruta menos comisiones y gastos manuales."
             accent="accent-cream"
           />
         </header>
 
         <section className="tabs-row">
-          {tabItems.map(({ key, label }) => (
-            <button key={key} className={panel === key ? "tab tab-active" : "tab"} onClick={() => setPanel(key as ActivePanel)}>
-              {label}
-            </button>
-          ))}
+          <div className="tabs-list">
+            {tabItems.map(({ key, label }) => (
+              <button key={key} className={panel === key ? "tab tab-active" : "tab"} onClick={() => setPanel(key as ActivePanel)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <Button variant="ghost" onClick={signOut}>
+            <LogOut size={16} />
+            Cerrar sesión
+          </Button>
         </section>
 
         {message ? <p className="auth-banner">{message}</p> : null}
@@ -1225,14 +1141,14 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
                           {sale.saleType === "gift" || sale.saleType === "giftNoAlcohol"
                             ? "Sin precio"
                             : sale.saleType === "wholesale"
-                              ? `${formatCurrency(sale.priceTotal)} base`
+                              ? `${formatCurrency(sale.wholesaleNetTotal ?? sale.priceTotal)} real`
                               : formatCurrency(sale.priceTotal)}
                         </strong>
                         <span>
                           {sale.saleType === "wholesale"
-                            ? `Cobro ${formatCurrency(sale.wholesaleNetTotal ?? sale.priceTotal - (sale.wholesaleDiscountValue ?? 0))} · `
+                            ? `Base ${formatCurrency(sale.priceTotal)} · `
                             : ""}
-                          Costo {formatCurrency(sale.costOfGoods)} · margen {(sale.margin * 100).toFixed(0)}%
+                          Neto {formatCurrency(sale.netProfit)} · margen {(sale.margin * 100).toFixed(0)}%
                         </span>
                       </div>
                     </article>
@@ -1377,13 +1293,13 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
 
         {panel === "expenses" ? (
           <Section
-            eyebrow="Gastos"
-            title="Registrar gastos mensuales u operativos"
+            eyebrow="Gastos manuales"
+            title="Registrar gastos manuales mensuales u operativos"
             description="Registra costos fijos del negocio con categorías predeterminadas."
           >
             <div className="form-grid split">
               <div className="form-card">
-                <h3>Nuevo gasto</h3>
+                <h3>Nuevo gasto manual</h3>
                 <div className="grid-2">
                   <Field label="Categoría">
                     <Select
@@ -1430,7 +1346,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
                 <div className="actions">
                   <Button onClick={saveExpense}>
                     <Plus size={16} />
-                    Guardar gasto
+                    Guardar gasto manual
                   </Button>
                 </div>
               </div>
@@ -1438,10 +1354,10 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
               <div className="table-card expenses-card">
                 <div className="table-head">
                   <div>
-                    <h3>Gastos registrados</h3>
+                    <h3>Gastos manuales registrados</h3>
                     <p>
-                      Mensuales: {formatCurrency(expensesSummary.monthlyTotal)} · Únicos:{" "}
-                      {formatCurrency(expensesSummary.oneTimeTotal)} · Descuentos:{" "}
+                      Manuales mensuales: {formatCurrency(expensesSummary.monthlyTotal)} · Manuales únicos:{" "}
+                      {formatCurrency(expensesSummary.oneTimeTotal)} · Descuentos trazables:{" "}
                       {formatCurrency(expensesSummary.discountTotal)} · Comisiones:{" "}
                       {formatCurrency(expensesSummary.commissionTotal)}
                     </p>
@@ -1483,7 +1399,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             action={
               <div className="section-head-metrics">
                 <span className="chip">{activeAmbassadorCount} embajadores</span>
-                <span className="chip">{formatCurrency(ledger.totals.revenue)} ingresos</span>
+                <span className="chip">{formatCurrency(ledger.totals.revenue)} ingresos netos</span>
                 <span className="chip">{formatCurrency(ledger.totals.investment)} inversión</span>
               </div>
             }
@@ -1639,6 +1555,14 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
                                 onClick={() => resetAmbassadorPassword(ambassador)}
                               >
                                 Reset clave
+                              </Button>
+                              <Button
+                                variant={boostActive ? "danger" : "secondary"}
+                                onClick={() => toggleAmbassadorBoost(ambassador.id)}
+                              >
+                                {boostActive
+                                  ? `Vence ${ambassador.boostExpiresAt ? formatDate(ambassador.boostExpiresAt) : "sin fecha"}`
+                                  : "Boost 7d"}
                               </Button>
                             </div>
                           </div>
@@ -1861,7 +1785,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
           </div>
           <div className="weekly-summary">
             <div className="mini-box">
-              <span>Ingresos</span>
+              <span>Ingresos netos</span>
               <strong>{formatCurrency(weeklyRevenue)}</strong>
             </div>
             <div className="mini-box">
@@ -1873,8 +1797,12 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
               <strong>{formatCurrency(weeklyNetProfit)}</strong>
             </div>
             <div className="mini-box">
-              <span>Gastos</span>
-              <strong>{formatCurrency(weeklyExpenseTotal)}</strong>
+              <span>Comisiones</span>
+              <strong>{formatCurrency(weeklyCommissions)}</strong>
+            </div>
+            <div className="mini-box">
+              <span>Gastos manuales</span>
+              <strong>{formatCurrency(weeklyManualExpenses)}</strong>
             </div>
           </div>
         </section>

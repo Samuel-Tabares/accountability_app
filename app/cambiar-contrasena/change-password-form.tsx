@@ -9,7 +9,7 @@ type ChangePasswordResponse = {
 };
 
 export function ChangePasswordForm() {
-  const [message, setMessage] = useState("Crea una contraseña permanente para continuar.");
+  const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -54,17 +54,19 @@ export function ChangePasswordForm() {
         <input className="input" type="password" name="confirmation" autoComplete="new-password" minLength={6} required />
       </label>
 
-      <p className="auth-banner" aria-live="polite">
-        {message}
-      </p>
+      <p className="auth-requirement">Debe tener mínimo 6 caracteres y al menos una mayúscula.</p>
+
+      {message ? (
+        <p className="auth-banner" aria-live="polite">
+          {message}
+        </p>
+      ) : null}
 
       <div className="button-row">
         <button className="button button-primary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Guardando..." : "Cambiar contraseña"}
         </button>
       </div>
-
-      <p className="auth-footnote">Debe tener mínimo 6 caracteres y al menos una mayúscula.</p>
     </form>
   );
 }

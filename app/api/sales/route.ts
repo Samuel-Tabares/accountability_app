@@ -9,7 +9,7 @@ import {
 import { pricingRowsToSettings } from "@/src/lib/pricing";
 import { getRouteAuthContext } from "@/src/lib/route-auth";
 import { createRateLimitHtmlResponse, rateLimitEmbajador } from "@/src/lib/rate-limit";
-import type { PricingVersionRow, PricingWholesaleTierRow, ProductionBatchRow, SaleType } from "@/src/lib/supabase/types";
+import type { PricingVersionRow, PricingWholesaleTierRow, ProductionBatchRow, ProfileRow, SaleType } from "@/src/lib/supabase/types";
 
 function setRedirect(response: NextResponse, request: NextRequest, fallback: string, error?: string) {
   const target = request.headers.get("referer") ?? new URL(fallback, request.url).toString();
@@ -27,6 +27,15 @@ function wantsJson(request: NextRequest) {
 
 function jsonResponse(ok: boolean, message: string, status: number) {
   return NextResponse.json({ ok, message }, { status });
+}
+
+function isMissingColumnError(error: { code?: string; message?: string } | null | undefined) {
+  return (
+    error?.code === "42703" ||
+    error?.code === "PGRST204" ||
+    error?.message?.includes("does not exist") ||
+    error?.message?.includes("schema cache")
+  );
 }
 
 function saleTotal(
@@ -53,6 +62,18 @@ function saleTotal(
 
 function unitsConsumed(saleType: SaleType, quantity: number) {
   return saleType === "promo" ? quantity * 2 : quantity;
+}
+
+function isBoostActive(profile: Pick<ProfileRow, "boost_active" | "boost_expires_at"> | null, referenceDate = new Date()) {
+  if (!profile?.boost_active) {
+    return false;
+  }
+
+  if (!profile.boost_expires_at) {
+    return true;
+  }
+
+  return new Date(profile.boost_expires_at).getTime() > referenceDate.getTime();
 }
 
 async function resolveFifoCost(
@@ -158,23 +179,38 @@ export async function POST(request: NextRequest) {
   const tiers = (tiersResult.data ?? []) as PricingWholesaleTierRow[];
   const activeTiers = pricing ? tiers.filter((tier) => tier.pricing_version_id === pricing.id) : [];
   const settings = pricingRowsToSettings(pricing, activeTiers);
+  const ambassadorProfileResult = ambassadorProfileId
+    ? await auth.adminClient
+        .from("profiles")
+        .select("id, boost_active, boost_expires_at")
+        .eq("id", ambassadorProfileId)
+        .eq("role", "embajador")
+        .eq("is_active", true)
+        .maybeSingle()
+    : { data: null };
+  const ambassadorProfile = ambassadorProfileResult.data as ProfileRow | null;
+  const validAmbassadorProfileId = ambassadorProfile?.id ?? null;
 
   const resolvedVariant = resolveSaleVariant({ saleType, wholesaleVariant });
   const priceTotal = saleTotal(settings, saleType, quantity, wholesaleVariant);
   const selection = saleType === "wholesale" ? resolveWholesaleSelection(settings, wholesaleVariant, quantity) : null;
-  const hasAmbassador = Boolean(ambassadorProfileId);
+  const hasAmbassador = Boolean(validAmbassadorProfileId);
   const wholesaleDiscountPct = saleType === "wholesale" && hasAmbassador ? selection?.discountPct ?? 0 : 0;
   const wholesaleDiscountValue =
     saleType === "wholesale" && hasAmbassador ? resolveWholesaleDiscountAmount(priceTotal, wholesaleDiscountPct) : 0;
   const wholesaleNetTotal =
     saleType === "wholesale" && hasAmbassador ? resolveWholesaleNetTotal(priceTotal, wholesaleDiscountPct) : priceTotal;
   const wholesaleBaseCommissionPct = saleType === "wholesale" && hasAmbassador ? selection?.commissionRate ?? 0 : 0;
-  const wholesaleBoostBonusPct = 0;
+  const wholesaleBoostBonusPct =
+    saleType === "wholesale" && hasAmbassador && isBoostActive(ambassadorProfile)
+      ? settings.boostBonusPct
+      : 0;
   const commissionRate = wholesaleBaseCommissionPct + wholesaleBoostBonusPct;
   const commissionValue = saleType === "wholesale" && hasAmbassador ? wholesaleNetTotal * commissionRate : 0;
   const fifo = await resolveFifoCost(auth.adminClient, resolvedVariant, unitsConsumed(saleType, quantity));
-  const grossProfit = priceTotal - fifo.totalCost;
-  const margin = priceTotal > 0 ? grossProfit / priceTotal : 0;
+  const grossProfit = wholesaleNetTotal - fifo.totalCost;
+  const netProfit = grossProfit - commissionValue;
+  const margin = wholesaleNetTotal > 0 ? netProfit / wholesaleNetTotal : 0;
 
   const { data: sale, error } = await auth.adminClient
     .from("sales")
@@ -182,7 +218,7 @@ export async function POST(request: NextRequest) {
       amount: wholesaleNetTotal,
       quantity,
       note,
-      ambassador_profile_id: ambassadorProfileId,
+      ambassador_profile_id: validAmbassadorProfileId,
       created_by: auth.userId,
       sale_type: saleType,
       wholesale_variant: saleType === "wholesale" ? wholesaleVariant : null,
@@ -197,20 +233,24 @@ export async function POST(request: NextRequest) {
       commission_value: commissionValue,
       cost_of_goods: fifo.totalCost,
       gross_profit: grossProfit,
+      net_profit: netProfit,
       margin
     })
     .select("*")
     .single();
 
   if (error || !sale) {
+    const message = isMissingColumnError(error)
+      ? "Falta aplicar la migración 0004_net_sale_boost.sql en Supabase."
+      : "No se pudo guardar la venta.";
     if (jsonMode) {
-      return jsonResponse(false, "No se pudo guardar la venta.", 500);
+      return jsonResponse(false, message, 500);
     }
     return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "sale_failed");
   }
 
   if (fifo.rows.length > 0) {
-    await auth.adminClient.from("sale_batch_consumptions").insert(
+    const { error: consumptionError } = await auth.adminClient.from("sale_batch_consumptions").insert(
       fifo.rows.map((row) => ({
         sale_id: sale.id,
         batch_id: row.batch_id,
@@ -218,6 +258,57 @@ export async function POST(request: NextRequest) {
         cost: row.cost
       }))
     );
+
+    if (consumptionError) {
+      await auth.adminClient.from("sales").delete().eq("id", sale.id);
+      const message = isMissingColumnError(consumptionError)
+        ? "Falta aplicar la migración 0004_net_sale_boost.sql en Supabase."
+        : "No se pudo guardar el consumo FIFO de la venta.";
+      if (jsonMode) {
+        return jsonResponse(false, message, 500);
+      }
+      return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "sale_failed");
+    }
+  }
+
+  const automaticExpenses = [
+    wholesaleDiscountValue > 0
+      ? {
+          created_by: auth.userId,
+          ambassador_profile_id: validAmbassadorProfileId,
+          category: "descuento_cliente",
+          description: `Descuento venta mayorista ${sale.id}`,
+          amount: wholesaleDiscountValue,
+          expense_type: "discount" as const,
+          source_sale_id: sale.id
+        }
+      : null,
+    commissionValue > 0
+      ? {
+          created_by: auth.userId,
+          ambassador_profile_id: validAmbassadorProfileId,
+          category: "comision_embajador",
+          description: `Comisión venta mayorista ${sale.id}`,
+          amount: commissionValue,
+          expense_type: "commission" as const,
+          source_sale_id: sale.id
+        }
+      : null
+  ].filter((expense): expense is NonNullable<typeof expense> => Boolean(expense));
+
+  if (automaticExpenses.length > 0) {
+    const { error: expensesError } = await auth.adminClient.from("expenses").insert(automaticExpenses);
+
+    if (expensesError) {
+      await auth.adminClient.from("sales").delete().eq("id", sale.id);
+      const message = isMissingColumnError(expensesError)
+        ? "Falta aplicar la migración 0004_net_sale_boost.sql en Supabase."
+        : "No se pudieron guardar los gastos automáticos de la venta.";
+      if (jsonMode) {
+        return jsonResponse(false, message, 500);
+      }
+      return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "sale_failed");
+    }
   }
 
   if (jsonMode) {

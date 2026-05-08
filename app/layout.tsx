@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, IBM_Plex_Sans } from "next/font/google";
+import { Baloo_2, Paytone_One } from "next/font/google";
 import "./globals.css";
 
-const serif = Cormorant_Garamond({
+const body = Baloo_2({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-serif"
+  variable: "--font-body"
 });
 
-const sans = IBM_Plex_Sans({
+const display = Paytone_One({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-sans"
+  weight: "400",
+  variable: "--font-display"
 });
 
 export const metadata: Metadata = {
@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${serif.variable} ${sans.variable}`}>{children}</body>
+      <body className={`${body.variable} ${display.variable}`}>{children}</body>
     </html>
   );
 }

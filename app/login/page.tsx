@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { dashboardPathForRole, getAuthContext } from "@/src/lib/auth";
+import logoTrabix from "@/public/site-assets/brand/logo-trabix.png";
 import { LoginForm } from "./login-form";
 
-function messageFor(error?: string, notice?: string, retryAfter?: string) {
+function messageFor(error?: string, retryAfter?: string) {
   if (error === "missing_credentials") return "Faltan credenciales.";
   if (error === "login_failed") return "No se pudo iniciar sesión.";
   if (error === "profile_missing") return "La cuenta no tiene perfil activo.";
@@ -18,7 +20,7 @@ function messageFor(error?: string, notice?: string, retryAfter?: string) {
   if (error === "rate_limited") {
     return retryAfter ? `Demasiados intentos. Intenta de nuevo en ${retryAfter} segundos.` : "Demasiados intentos. Intenta más tarde.";
   }
-  return "Acceso protegido por Supabase Auth, alias internos y RLS.";
+  return undefined;
 }
 
 type Props = {
@@ -40,30 +42,20 @@ export default async function LoginPage({ searchParams }: Props) {
 
   const params = (await searchParams) ?? {};
   const error = params.error;
-  const notice = params.notice;
   const retryAfter = params.retry_after;
 
   return (
     <main className="auth-shell">
       <section className="auth-card auth-card-login">
-        <p className="eyebrow">TRABIX / Supabase-first</p>
-        <h1>Acceso de admin y embajador.</h1>
-        <p className="hero-copy">{messageFor(error, notice, retryAfter)}</p>
-
-        <div className="auth-grid">
-          <div className="auth-panel">
-            <p className="panel-label">Lo que protege este flujo</p>
-            <ul className="feature-list">
-              <li>Sesión firmada por Supabase Auth.</li>
-              <li>Redirección por rol con middleware.</li>
-              <li>Acceso a datos limitado por RLS.</li>
-              <li>Rate limiting con Redis para login y embajador.</li>
-              <li>Identificador visible por usuario o código, sin correo en UI.</li>
-            </ul>
-          </div>
-
-          <LoginForm initialMessage={messageFor(error, notice, retryAfter)} />
-        </div>
+        <Image
+          className="auth-logo"
+          src={logoTrabix}
+          alt="TRABIX Granizados"
+          priority
+          sizes="(max-width: 760px) 64vw, 250px"
+        />
+        <p className="auth-tagline">Embajadores</p>
+        <LoginForm initialMessage={messageFor(error, retryAfter)} />
       </section>
     </main>
   );

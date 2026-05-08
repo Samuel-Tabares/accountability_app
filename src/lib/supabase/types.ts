@@ -23,6 +23,8 @@ export type Database = {
           password_updated_at: string | null;
           password_reset_at: string | null;
           is_active: boolean;
+          boost_active: boolean;
+          boost_expires_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -55,6 +57,7 @@ export type Database = {
           commission_value: number;
           cost_of_goods: number;
           gross_profit: number | null;
+          net_profit: number | null;
           margin: number;
         };
         Insert: Partial<Database["public"]["Tables"]["sales"]["Row"]> & {
@@ -83,6 +86,7 @@ export type Database = {
           description: string;
           amount: number;
           expense_type: ExpenseType;
+          source_sale_id: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["expenses"]["Row"]> & {
           created_by: string;
@@ -98,6 +102,13 @@ export type Database = {
             columns: ["ambassador_profile_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "expenses_source_sale_id_fkey";
+            columns: ["source_sale_id"];
+            isOneToOne: false;
+            referencedRelation: "sales";
             referencedColumns: ["id"];
           }
         ];

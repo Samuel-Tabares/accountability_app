@@ -15,11 +15,8 @@ export default async function ChangePasswordPage() {
   return (
     <main className="auth-shell">
       <section className="auth-card auth-card-login">
-        <p className="eyebrow">TRABIX / contraseña temporal</p>
-        <h1>Cambia tu contraseña para entrar.</h1>
-        <p className="hero-copy">
-          La contraseña temporal solo sirve para este primer acceso o para un reset solicitado al admin.
-        </p>
+        <img className="auth-logo" src="/site-assets/brand/logo-trabix.png" alt="TRABIX Granizados" />
+        <p className="auth-tagline">cambio de contraseña</p>
         <ChangePasswordForm />
       </section>
     </main>

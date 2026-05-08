@@ -81,6 +81,7 @@ export type Sale = {
   commissionValue?: number;
   costOfGoods?: number;
   grossProfit?: number;
+  netProfit?: number;
   margin?: number;
   pricingVersionId?: string;
   discountExpenseId?: string;
@@ -148,6 +149,7 @@ export type SaleLedger = Sale & {
   clientSavings: number;
   costOfGoods: number;
   grossProfit: number;
+  netProfit: number;
   margin: number;
   resolvedVariant: ProductVariant;
   displayLabel: string;
@@ -158,11 +160,13 @@ export type CalculatedState = {
   sales: SaleLedger[];
   totals: {
     investment: number;
+    baseSales: number;
     revenue: number;
     costOfGoods: number;
     grossProfit: number;
     commissions: number;
     discounts: number;
+    manualExpenses: number;
     expenses: number;
     netProfit: number;
     unitsSold: number;

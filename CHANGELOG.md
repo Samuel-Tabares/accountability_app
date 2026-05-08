@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.8.2] - 2026-05-06
+
+### Changed
+
+- Updated the admin financial summary to separate venta base, ingresos netos, descuentos, costo de producción, comisiones, gastos manuales, utilidad bruta, and utilidad neta.
+- Recomputed dashboard net profit as utilidad bruta minus commissions and manual expenses, keeping discounts outside expenses so they are not subtracted twice.
+- Updated the weekly admin summary to use the same financial language for ingresos netos, utilidad, commissions, and manual expenses.
+
+## [0.8.1] - 2026-05-06
+
+### Changed
+
+- Added first-level admin financial cards for discounts and embajador commissions without changing profit formulas.
+
+## [0.8.0] - 2026-05-06
+
+### Changed
+
+- Redesigned the app with the public Trabix Granizados brand style, including the light frost palette, glass surfaces, colorful action states, and `Baloo 2` / `Paytone One` typography.
+- Added the Trabix logo asset to the login, password-change, admin, and embajador experiences.
+- Updated admin, embajador, and auth surfaces to use the brighter Trabix visual system without changing routes, auth, Supabase access, or business logic.
+- Simplified the login and password-change screens to centered branding with minimal auth forms, an explicit password requirement hint, and stronger login logo contrast.
+- Simplified the desktop admin layout by removing the sidebar and moving logout into the main tab navigation row.
+- Refined the embajador hero with centered branding, prominent ambassador code, a compact red logout control, and gross sales as the primary total.
+- Adjusted embajador boost copy to avoid admin-facing language and show wholesale sale prices before discounts first.
+
+## [0.7.0] - 2026-05-05
+
+### Added
+
+- Supabase migration for persisted embajador boost state, linked sale expenses, and nullable net-profit snapshots.
+- Admin-only boost toggle route and dashboard button to activate a 7-day boost or cancel an active boost.
+- Automatic linked discount and commission expense records for new embajador wholesale sales.
+
+### Changed
+
+- New sales now treat `price_total` as venta base and `amount` / `wholesale_net_total` as venta real after discounts.
+- New commission snapshots are calculated on venta real and include the configured `Boost extra` when the embajador has an active boost.
+- New net-profit and margin snapshots use `venta real - costo FIFO - comisión` and `utilidad neta / venta real`.
+- Dashboard and weekly summaries now report ingresos as venta real and keep discounts visible without subtracting them twice from net profit.
+- Dashboard mappers now tolerate databases that have not yet applied the new nullable columns, and affected APIs return an explicit migration-required error.
+- Embajador dashboard now uses a mobile-first layout with supported app styles, compact assigned-sale cards, and visible boost status.
+
 ## [0.6.0] - 2026-05-05
 
 ### Added

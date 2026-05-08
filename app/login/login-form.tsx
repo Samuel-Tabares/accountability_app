@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 
 type Props = {
-  initialMessage: string;
+  initialMessage?: string;
 };
 
 type LoginResponse =
@@ -58,7 +58,7 @@ export function LoginForm({ initialMessage }: Props) {
   return (
     <form className="auth-form" action="/api/auth/session" method="post" onSubmit={handleSubmit}>
       <label className="field">
-        <span>Usuario o código</span>
+        <span>Código o usuario</span>
         <input className="input" type="text" name="identifier" placeholder="samuel o emb-001" autoComplete="username" required />
       </label>
       <label className="field">
@@ -66,19 +66,17 @@ export function LoginForm({ initialMessage }: Props) {
         <input className="input" type="password" name="password" placeholder="••••••••" autoComplete="current-password" required />
       </label>
 
-      <p className="auth-banner" aria-live="polite">
-        {message}
-      </p>
+      {message ? (
+        <p className="auth-banner" aria-live="polite">
+          {message}
+        </p>
+      ) : null}
 
       <div className="button-row">
         <button className="button button-primary" type="submit" name="mode" value="login" disabled={isSubmitting}>
           {isSubmitting ? "Entrando..." : "Entrar"}
         </button>
       </div>
-
-      <p className="auth-footnote">
-        El acceso usa un alias interno de Supabase. No se usan correos visibles en la interfaz.
-      </p>
     </form>
   );
 }
