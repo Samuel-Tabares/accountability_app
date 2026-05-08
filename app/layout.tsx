@@ -16,7 +16,11 @@ const display = Paytone_One({
 
 export const metadata: Metadata = {
   title: "TRABIX | Control de ventas y embajadores",
-  description: "Panel operativo para ventas de granizados, inventario, embajadores y finanzas."
+  description: "Panel operativo para ventas de granizados, inventario, embajadores y finanzas.",
+  icons: {
+    icon: "/site-assets/brand/logo-trabix.png",
+    apple: "/site-assets/brand/logo-trabix.png"
+  }
 };
 
 export default function RootLayout({
