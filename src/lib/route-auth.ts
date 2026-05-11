@@ -25,7 +25,11 @@ export async function getRouteAuthContext(request: NextRequest, response: NextRe
 
   const adminClient = createSupabaseAdminClient();
   const profileClient = user ? supabase : adminClient;
-  const { data: profile } = await profileClient.from("profiles").select("*").eq("id", userId).maybeSingle();
+  const { data: profile } = await profileClient
+    .from("profiles")
+    .select("id, role, is_active, must_change_password, username, full_name, email, phone, ambassador_id, boost_active, boost_expires_at, level, created_at, updated_at")
+    .eq("id", userId)
+    .maybeSingle();
 
   if (!profile || !profile.is_active) {
     return null;

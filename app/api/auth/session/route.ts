@@ -136,7 +136,11 @@ export async function POST(request: NextRequest) {
   }
 
   const adminClient = createSupabaseAdminClient();
-  const { data: profile } = await adminClient.from("profiles").select("*").eq("id", data.user.id).maybeSingle();
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("id, role, is_active, must_change_password, username, full_name, ambassador_id")
+    .eq("id", data.user.id)
+    .maybeSingle();
   if (!profile) {
     await supabase.auth.signOut();
     const message = loginFailureMessage("profile_missing");

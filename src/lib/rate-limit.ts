@@ -1,6 +1,7 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeLoginIdentifier } from "./identity";
 
 export type RateLimitDecision =
   | {
@@ -115,10 +116,6 @@ export function getClientIp(request: NextRequest) {
   }
 
   return request.headers.get("x-real-ip")?.trim() || "unknown-ip";
-}
-
-export function normalizeLoginIdentifier(identifier: string) {
-  return identifier.trim().toLowerCase();
 }
 
 export async function rateLimitLogin(request: NextRequest, identifier: string) {

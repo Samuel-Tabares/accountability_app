@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { settingsToPricingInsert, settingsToTierInserts } from "@/src/lib/pricing";
 import { requireRouteRole } from "@/src/lib/route-auth";
+import { jsonResponse } from "@/src/lib/api-utils";
 import type { PricingSettings } from "@/src/lib/types";
-
-function jsonResponse(ok: boolean, message: string, status: number) {
-  return NextResponse.json({ ok, message }, { status });
-}
 
 function numberField(formData: FormData, key: string) {
   const value = Number(formData.get(key));
@@ -80,7 +77,7 @@ export async function POST(request: NextRequest) {
   const { data: version, error: versionError } = await auth.adminClient
     .from("pricing_versions")
     .insert(settingsToPricingInsert(settings, auth.userId))
-    .select("*")
+    .select("id")
     .single();
 
   if (versionError || !version) {

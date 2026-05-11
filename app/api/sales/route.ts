@@ -9,34 +9,9 @@ import {
 import { pricingRowsToSettings } from "@/src/lib/pricing";
 import { getRouteAuthContext } from "@/src/lib/route-auth";
 import { createRateLimitHtmlResponse, rateLimitEmbajador } from "@/src/lib/rate-limit";
+import { isMissingColumnError, isProfileBoostActive, jsonResponse, setRedirect, wantsJson } from "@/src/lib/api-utils";
+import { PROMO_UNITS_MULTIPLIER, WHOLESALE_MIN_QUANTITY } from "@/src/lib/constants";
 import type { PricingVersionRow, PricingWholesaleTierRow, ProductionBatchRow, ProfileRow, SaleType } from "@/src/lib/supabase/types";
-
-function setRedirect(response: NextResponse, request: NextRequest, fallback: string, error?: string) {
-  const target = request.headers.get("referer") ?? new URL(fallback, request.url).toString();
-  const url = new URL(target);
-  if (error) {
-    url.searchParams.set("error", error);
-  }
-  response.headers.set("Location", url.toString());
-  return response;
-}
-
-function wantsJson(request: NextRequest) {
-  return request.headers.get("accept")?.includes("application/json") ?? false;
-}
-
-function jsonResponse(ok: boolean, message: string, status: number) {
-  return NextResponse.json({ ok, message }, { status });
-}
-
-function isMissingColumnError(error: { code?: string; message?: string } | null | undefined) {
-  return (
-    error?.code === "42703" ||
-    error?.code === "PGRST204" ||
-    error?.message?.includes("does not exist") ||
-    error?.message?.includes("schema cache")
-  );
-}
 
 function saleTotal(
   settings: ReturnType<typeof pricingRowsToSettings>,
@@ -61,19 +36,7 @@ function saleTotal(
 }
 
 function unitsConsumed(saleType: SaleType, quantity: number) {
-  return saleType === "promo" ? quantity * 2 : quantity;
-}
-
-function isBoostActive(profile: Pick<ProfileRow, "boost_active" | "boost_expires_at"> | null, referenceDate = new Date()) {
-  if (!profile?.boost_active) {
-    return false;
-  }
-
-  if (!profile.boost_expires_at) {
-    return true;
-  }
-
-  return new Date(profile.boost_expires_at).getTime() > referenceDate.getTime();
+  return saleType === "promo" ? quantity * PROMO_UNITS_MULTIPLIER : quantity;
 }
 
 async function resolveFifoCost(
@@ -158,7 +121,7 @@ export async function POST(request: NextRequest) {
     !["withAlcohol", "withoutAlcohol"].includes(wholesaleVariant) ||
     !Number.isFinite(quantity) ||
     quantity < 1 ||
-    (saleType === "wholesale" && quantity < 20)
+    (saleType === "wholesale" && quantity < WHOLESALE_MIN_QUANTITY)
   ) {
     if (jsonMode) {
       return jsonResponse(false, "Revisa tipo, variante y cantidad.", 400);
@@ -202,7 +165,7 @@ export async function POST(request: NextRequest) {
     saleType === "wholesale" && hasAmbassador ? resolveWholesaleNetTotal(priceTotal, wholesaleDiscountPct) : priceTotal;
   const wholesaleBaseCommissionPct = saleType === "wholesale" && hasAmbassador ? selection?.commissionRate ?? 0 : 0;
   const wholesaleBoostBonusPct =
-    saleType === "wholesale" && hasAmbassador && isBoostActive(ambassadorProfile)
+    saleType === "wholesale" && hasAmbassador && isProfileBoostActive(ambassadorProfile)
       ? settings.boostBonusPct
       : 0;
   const commissionRate = wholesaleBaseCommissionPct + wholesaleBoostBonusPct;

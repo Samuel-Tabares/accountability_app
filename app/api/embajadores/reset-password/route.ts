@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateTemporaryPassword } from "@/src/lib/temp-password";
 import { requireRouteRole } from "@/src/lib/route-auth";
-
-function wantsJson(request: NextRequest) {
-  return request.headers.get("accept")?.includes("application/json") ?? false;
-}
-
-function jsonResponse(ok: boolean, message: string, status: number, extras?: Record<string, string>) {
-  return NextResponse.json({ ok, message, ...extras }, { status });
-}
+import { jsonResponse, wantsJson } from "@/src/lib/api-utils";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -17,9 +10,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireRouteRole(request, response, "admin");
 
   if (!auth) {
-    if (jsonMode) {
-      return jsonResponse(false, "No tienes permisos para resetear contraseñas.", 403);
-    }
+    if (jsonMode) return jsonResponse(false, "No tienes permisos para resetear contraseñas.", 403);
     return response;
   }
 
@@ -30,7 +21,7 @@ export async function POST(request: NextRequest) {
 
   const { data: profile } = await auth.adminClient
     .from("profiles")
-    .select("*")
+    .select("id, username, ambassador_id, must_change_password")
     .eq("id", profileId)
     .eq("role", "embajador")
     .maybeSingle();
@@ -40,9 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   const password = generateTemporaryPassword();
-  const { error: authError } = await auth.adminClient.auth.admin.updateUserById(profile.id, {
-    password
-  });
+  const { error: authError } = await auth.adminClient.auth.admin.updateUserById(profile.id, { password });
 
   if (authError) {
     return jsonResponse(false, authError.message, 500);
@@ -50,10 +39,7 @@ export async function POST(request: NextRequest) {
 
   const { error: profileError } = await auth.adminClient
     .from("profiles")
-    .update({
-      must_change_password: true,
-      password_reset_at: new Date().toISOString()
-    })
+    .update({ must_change_password: true, password_reset_at: new Date().toISOString() })
     .eq("id", profile.id);
 
   if (profileError) {

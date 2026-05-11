@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0] - 2026-05-09
+
+### Changed
+
+- Extracted shared API helpers (`setRedirect`, `wantsJson`, `jsonResponse`, `isMissingColumnError`, `isProfileBoostActive`) into `src/lib/api-utils.ts`, eliminating copy-paste across 9 route files.
+- Added `src/lib/constants.ts` with business constants (`WHOLESALE_MIN_QUANTITY`, `BOOST_DURATION_DAYS`, `PROMO_UNITS_MULTIPLIER`, `MISSING_COLUMN_PG_CODES`).
+- Consolidated admin-only auth blocks in `expenses`, `profiles`, and `embajadores` routes to use `requireRouteRole`.
+- Narrowed `select("*")` to explicit column lists in `route-auth.ts`, `auth.ts`, `session/route.ts`, and `reset-password/route.ts`.
+- Removed duplicate `normalizeLoginIdentifier` export from `rate-limit.ts`; now imports from `identity.ts`.
+- Split `admin-dashboard.tsx` (1813 lines) into an orchestrator (294 lines) plus 5 focused panel components under `app/admin/components/`.
+- Removed dead helper functions (`buildCommissionExpense`, `buildDiscountExpense`, `mutateState`) that were never called from JSX.
+
 ## [0.8.2] - 2026-05-06
 
 ### Changed

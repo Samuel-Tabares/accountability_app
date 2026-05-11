@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRouteRole } from "@/src/lib/route-auth";
+import { jsonResponse, wantsJson } from "@/src/lib/api-utils";
 import type { ProductVariant } from "@/src/lib/types";
-
-function wantsJson(request: NextRequest) {
-  return request.headers.get("accept")?.includes("application/json") ?? false;
-}
-
-function jsonResponse(ok: boolean, message: string, status: number) {
-  return NextResponse.json({ ok, message }, { status });
-}
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -47,15 +40,8 @@ export async function POST(request: NextRequest) {
 
   const { data: batch, error: batchError } = await auth.adminClient
     .from("production_batches")
-    .insert({
-      label,
-      variant,
-      units_produced: unitsProduced,
-      total_cost: totalCost,
-      notes,
-      created_by: auth.userId
-    })
-    .select("*")
+    .insert({ label, variant, units_produced: unitsProduced, total_cost: totalCost, notes, created_by: auth.userId })
+    .select("id")
     .single();
 
   if (batchError || !batch) {
@@ -79,9 +65,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (jsonMode) {
-    return jsonResponse(true, "Lote guardado correctamente.", 201);
-  }
-
+  if (jsonMode) return jsonResponse(true, "Lote guardado correctamente.", 201);
   return response;
 }
