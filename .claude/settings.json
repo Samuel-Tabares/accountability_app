@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push*)",
+            "command": "echo '{\"systemMessage\": \"⚠️  Antes de push: ¿agregaste migraciones SQL nuevas? Si es así, aplícalas primero en el SQL editor de producción (tcwhnglikclgylddutwp).\"}'"
+          }
+        ]
+      }
+    ]
+  }
+}
