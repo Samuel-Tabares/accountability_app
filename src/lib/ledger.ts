@@ -85,11 +85,16 @@ export function saleTypeLabel(
     gift: "Regalo con licor",
     singleNoAlcohol: "Unidad sin licor",
     giftNoAlcohol: "Regalo sin licor",
-    wholesale: "Venta al por mayor"
+    wholesale: "Venta al por mayor",
+    consignment: "Consignación"
   };
 
   if (saleType === "wholesale") {
     return variant === "withAlcohol" ? "Mayorista con licor" : "Mayorista sin licor";
+  }
+
+  if (saleType === "consignment") {
+    return variant === "withAlcohol" ? "Consignación con licor" : "Consignación sin licor";
   }
 
   return labels[saleType];
@@ -100,7 +105,7 @@ export function saleVariantForType(saleType: SaleType, wholesaleVariant?: "withA
     return "withoutAlcohol";
   }
 
-  if (saleType === "wholesale") {
+  if (saleType === "wholesale" || saleType === "consignment") {
     return wholesaleVariant ?? "withAlcohol";
   }
 
@@ -128,6 +133,8 @@ export function resolveSaleUnitPrice(
         sale.wholesaleVariant ?? "withAlcohol",
         sale.quantity
       ).tier?.unitPrice ?? 0;
+    case "consignment":
+      return 0;
   }
 }
 
@@ -179,6 +186,11 @@ function saleRealTotal(sale: Pick<Sale, "priceTotal" | "wholesaleNetTotal">) {
 }
 
 function cloneBatches(state: AppState): BatchRemaining[] {
+  const returnsByBatch = new Map<string, number>();
+  for (const r of state.inventoryReturns ?? []) {
+    returnsByBatch.set(r.batchId, (returnsByBatch.get(r.batchId) ?? 0) + r.units);
+  }
+
   return state.batches
     .slice()
     .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt))
@@ -186,7 +198,7 @@ function cloneBatches(state: AppState): BatchRemaining[] {
       id: batch.id,
       label: batch.label,
       variant: batch.variant,
-      unitsRemaining: batch.unitsProduced,
+      unitsRemaining: batch.unitsProduced + (returnsByBatch.get(batch.id) ?? 0),
       unitsProduced: batch.unitsProduced,
       totalCost: batch.totalCost,
       unitCost: batch.unitsProduced > 0 ? batch.totalCost / batch.unitsProduced : 0
@@ -360,6 +372,12 @@ export function calculateLedger(state: AppState): CalculatedState {
   const unitsProduced = state.batches.reduce((sum, batch) => sum + batch.unitsProduced, 0);
   const unitsRemaining = batches.reduce((sum, batch) => sum + batch.unitsRemaining, 0);
   const investment = state.batches.reduce((sum, batch) => sum + batch.totalCost, 0);
+  const consignedWithAlcohol = state.consignmentClients
+    .filter((c) => c.baseQuantityWithAlcohol > 0 || c.baseQuantityWithoutAlcohol > 0)
+    .reduce((sum, c) => sum + c.baseQuantityWithAlcohol, 0);
+  const consignedWithoutAlcohol = state.consignmentClients
+    .filter((c) => c.baseQuantityWithAlcohol > 0 || c.baseQuantityWithoutAlcohol > 0)
+    .reduce((sum, c) => sum + c.baseQuantityWithoutAlcohol, 0);
 
   return {
     batches,
@@ -377,7 +395,9 @@ export function calculateLedger(state: AppState): CalculatedState {
       netProfit,
       unitsSold,
       unitsProduced,
-      unitsRemaining
+      unitsRemaining,
+      consignedWithAlcohol,
+      consignedWithoutAlcohol
     }
   };
 }

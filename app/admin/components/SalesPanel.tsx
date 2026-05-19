@@ -53,6 +53,8 @@ function saleTotalPrice(
       const selection = resolveWholesaleSelection(settings, wholesaleVariant, quantity);
       return (selection.tier?.unitPrice ?? 0) * quantity;
     }
+    case "consignment":
+      return 0;
   }
 }
 
@@ -99,6 +101,7 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
     { key: "wholesale", label: "Venta al por mayor" }
   ];
   const filteredSales = ledger.sales.slice().sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  const consignmentClientById = new Map(state.consignmentClients.map((c) => [c.id, c]));
 
   function updateSaleForm(field: string, value: string | number | boolean) {
     setSaleForm((prev) => {
@@ -269,10 +272,18 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
           </div>
 
           <div className="stack-table">
-            {filteredSales.slice(0, 8).map((sale) => (
+            {filteredSales.slice(0, 8).map((sale) => {
+              const consignmentClient =
+                sale.saleType === "consignment" && sale.consignmentClientId
+                  ? consignmentClientById.get(sale.consignmentClientId)
+                  : undefined;
+              const titleLabel = consignmentClient
+                ? `${sale.displayLabel} · ${consignmentClient.name}`
+                : sale.displayLabel;
+              return (
               <article key={sale.id} className="table-row">
                 <div>
-                  <strong>{sale.displayLabel}</strong>
+                  <strong>{titleLabel}</strong>
                   <span>
                     {sale.saleType === "promo"
                       ? `${sale.quantity} promo(s) · ${sale.quantity * 2} granizados`
@@ -294,7 +305,8 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
                   </span>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

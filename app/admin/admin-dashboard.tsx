@@ -9,6 +9,7 @@ import {
   HandCoins,
   Hammer,
   LogOut,
+  Package,
   Percent
 } from "lucide-react";
 import { calculateLedger, formatCurrency, formatDate, summarizeExpenses } from "@/src/lib/ledger";
@@ -19,8 +20,9 @@ import ProductionPanel from "./components/ProductionPanel";
 import ExpensesPanel from "./components/ExpensesPanel";
 import AmbassadorsPanel from "./components/AmbassadorsPanel";
 import SettingsPanel from "./components/SettingsPanel";
+import ConsignacionesPanel from "./components/ConsignacionesPanel";
 
-type ActivePanel = "sales" | "production" | "expenses" | "ambassadors" | "settings";
+type ActivePanel = "sales" | "production" | "expenses" | "ambassadors" | "settings" | "consignaciones";
 
 type AdminDashboardProps = {
   initialState: AppState;
@@ -95,6 +97,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     { key: "production", label: "Lotes" },
     { key: "expenses", label: "Gastos manuales" },
     { key: "ambassadors", label: "Embajadores" },
+    { key: "consignaciones", label: "Consignaciones" },
     { key: "settings", label: "Configuración" }
   ];
 
@@ -189,6 +192,13 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             subtext="Utilidad bruta menos comisiones y gastos manuales."
             accent="accent-cream"
           />
+          <MetricCard
+            icon={<Package size={18} />}
+            label="Consignados"
+            value={`${ledger.totals.consignedWithAlcohol}A / ${ledger.totals.consignedWithoutAlcohol}SA`}
+            subtext="Granizados fuera en establecimientos."
+            accent="accent-cream"
+          />
         </header>
 
         <section className="tabs-row">
@@ -252,6 +262,18 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
         {panel === "settings" ? (
           <SettingsPanel
             initialSettings={state.settings}
+            onRefresh={refreshDashboard}
+            onMessage={showMessage}
+          />
+        ) : null}
+
+        {panel === "consignaciones" ? (
+          <ConsignacionesPanel
+            consignmentClients={state.consignmentClients}
+            consignmentReplenishments={state.consignmentReplenishments}
+            consignmentPickups={state.consignmentPickups}
+            defaultPriceWithAlcohol={4900}
+            defaultPriceWithoutAlcohol={4800}
             onRefresh={refreshDashboard}
             onMessage={showMessage}
           />

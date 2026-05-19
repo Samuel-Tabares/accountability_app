@@ -24,5 +24,9 @@ export const blankState: AppState = {
       { minQuantity: 50, unitPrice: 4500, commissionPct: 0.18, clientDiscountPct: 0.12 },
       { minQuantity: 100, unitPrice: 4200, commissionPct: 0.2, clientDiscountPct: 0.15 }
     ]
-  }
+  },
+  consignmentClients: [],
+  consignmentReplenishments: [],
+  consignmentPickups: [],
+  inventoryReturns: []
 };

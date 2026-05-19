@@ -10,7 +10,8 @@ export type SaleType =
   | "gift"
   | "singleNoAlcohol"
   | "giftNoAlcohol"
-  | "wholesale";
+  | "wholesale"
+  | "consignment";
 
 export type User = {
   id: string;
@@ -86,6 +87,7 @@ export type Sale = {
   pricingVersionId?: string;
   discountExpenseId?: string;
   commissionExpenseId?: string;
+  consignmentClientId?: string;
   note: string;
 };
 
@@ -103,6 +105,66 @@ export type Expense = {
   ambassadorCode?: string;
 };
 
+export type ConsignmentClient = {
+  id: string;
+  createdAt: string;
+  name: string;
+  address: string;
+  contactName?: string;
+  phone?: string;
+  notes?: string;
+  baseQuantityWithAlcohol: number;
+  baseQuantityWithoutAlcohol: number;
+  priceWithAlcohol?: number;
+  priceWithoutAlcohol?: number;
+  nextReplenishmentDate: string;
+  initialSaleIdWithAlcohol?: string;
+  initialSaleIdWithoutAlcohol?: string;
+};
+
+export type ConsignmentReplenishment = {
+  id: string;
+  createdAt: string;
+  clientId: string;
+  unitsDeliveredWithAlcohol: number;
+  unitsDeliveredWithoutAlcohol: number;
+  unitPriceWithAlcohol: number;
+  unitPriceWithoutAlcohol: number;
+  amountCharged: number;
+  newBaseWithAlcohol: number;
+  newBaseWithoutAlcohol: number;
+  notes?: string;
+  saleIdWithAlcohol?: string;
+  saleIdWithoutAlcohol?: string;
+};
+
+export type ConsignmentPickup = {
+  id: string;
+  createdAt: string;
+  clientId: string;
+  unitsCollectedWithAlcohol: number;
+  unitsCollectedWithoutAlcohol: number;
+  unitsChargedWithAlcohol: number;
+  unitsChargedWithoutAlcohol: number;
+  unitPriceWithAlcohol: number;
+  unitPriceWithoutAlcohol: number;
+  amountCharged: number;
+  saleIdWithAlcohol?: string;
+  saleIdWithoutAlcohol?: string;
+  notes?: string;
+};
+
+export type InventoryReturn = {
+  id: string;
+  createdAt: string;
+  batchId: string;
+  variant: ProductVariant;
+  units: number;
+  sourcePickupId?: string;
+  sourceClientId?: string;
+  notes?: string;
+};
+
 export type AppState = {
   users: User[];
   ambassadors: Ambassador[];
@@ -111,6 +173,10 @@ export type AppState = {
   sales: Sale[];
   expenses: Expense[];
   settings: PricingSettings;
+  consignmentClients: ConsignmentClient[];
+  consignmentReplenishments: ConsignmentReplenishment[];
+  consignmentPickups: ConsignmentPickup[];
+  inventoryReturns: InventoryReturn[];
 };
 
 export type PricingSettings = {
@@ -172,5 +238,7 @@ export type CalculatedState = {
     unitsSold: number;
     unitsProduced: number;
     unitsRemaining: number;
+    consignedWithAlcohol: number;
+    consignedWithoutAlcohol: number;
   };
 };

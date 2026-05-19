@@ -1,8 +1,73 @@
 export type AppRole = "admin" | "embajador";
 export type Level = "nivel0" | "plata" | "oro" | "diamante";
 export type ProductVariant = "withAlcohol" | "withoutAlcohol";
-export type SaleType = "unit" | "promo" | "gift" | "singleNoAlcohol" | "giftNoAlcohol" | "wholesale";
+export type SaleType = "unit" | "promo" | "gift" | "singleNoAlcohol" | "giftNoAlcohol" | "wholesale" | "consignment";
 export type ExpenseType = "monthly" | "oneTime" | "commission" | "discount";
+
+export type ConsignmentClientRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  name: string;
+  address: string;
+  contact_name: string | null;
+  phone: string | null;
+  notes: string | null;
+  base_quantity_with_alcohol: number;
+  base_quantity_without_alcohol: number;
+  price_with_alcohol: number | null;
+  price_without_alcohol: number | null;
+  next_replenishment_date: string;
+  initial_sale_id_with_alcohol: string | null;
+  initial_sale_id_without_alcohol: string | null;
+};
+
+export type ConsignmentReplenishmentRow = {
+  id: string;
+  created_at: string;
+  created_by: string;
+  client_id: string;
+  units_delivered_with_alcohol: number;
+  units_delivered_without_alcohol: number;
+  unit_price_with_alcohol: number;
+  unit_price_without_alcohol: number;
+  amount_charged: number;
+  new_base_with_alcohol: number;
+  new_base_without_alcohol: number;
+  notes: string | null;
+  sale_id_with_alcohol: string | null;
+  sale_id_without_alcohol: string | null;
+};
+
+export type ConsignmentPickupRow = {
+  id: string;
+  created_at: string;
+  created_by: string;
+  client_id: string;
+  units_collected_with_alcohol: number;
+  units_collected_without_alcohol: number;
+  units_charged_with_alcohol: number;
+  units_charged_without_alcohol: number;
+  unit_price_with_alcohol: number;
+  unit_price_without_alcohol: number;
+  amount_charged: number;
+  sale_id_with_alcohol: string | null;
+  sale_id_without_alcohol: string | null;
+  notes: string | null;
+};
+
+export type InventoryReturnRow = {
+  id: string;
+  created_at: string;
+  created_by: string;
+  batch_id: string;
+  variant: ProductVariant;
+  units: number;
+  source_pickup_id: string | null;
+  source_client_id: string | null;
+  notes: string | null;
+};
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -59,6 +124,7 @@ export type Database = {
           gross_profit: number | null;
           net_profit: number | null;
           margin: number;
+          consignment_client_id: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["sales"]["Row"]> & {
           created_by: string;
