@@ -240,5 +240,6 @@ export type CalculatedState = {
     unitsRemaining: number;
     consignedWithAlcohol: number;
     consignedWithoutAlcohol: number;
+    consignmentStockCogs: number;
   };
 };

@@ -24,7 +24,9 @@ type FormMode =
   | { kind: "create" }
   | { kind: "edit"; clientId: string }
   | { kind: "reponer"; clientId: string }
-  | { kind: "recoger"; clientId: string };
+  | { kind: "recoger"; clientId: string }
+  | { kind: "historial"; clientId: string }
+  | { kind: "reactivar"; clientId: string };
 
 type ClientDraft = {
   name: string;
@@ -50,6 +52,14 @@ type RecogerDraft = {
   notes: string;
 };
 
+type ReactivarDraft = {
+  unitsWithAlcohol: number;
+  unitsWithoutAlcohol: number;
+  priceWithAlcohol: string;
+  priceWithoutAlcohol: string;
+  notes: string;
+};
+
 const emptyClientDraft: ClientDraft = {
   name: "",
   address: "",
@@ -71,6 +81,14 @@ const emptyReponerDraft: ReponerDraft = {
 const emptyRecogerDraft: RecogerDraft = {
   unitsCollectedWithAlcohol: 0,
   unitsCollectedWithoutAlcohol: 0,
+  notes: ""
+};
+
+const emptyReactivarDraft: ReactivarDraft = {
+  unitsWithAlcohol: 0,
+  unitsWithoutAlcohol: 0,
+  priceWithAlcohol: "",
+  priceWithoutAlcohol: "",
   notes: ""
 };
 
@@ -188,10 +206,15 @@ export default function ConsignacionesPanel({
   const [clientDraft, setClientDraft] = useState<ClientDraft>(emptyClientDraft);
   const [reponerDraft, setReponerDraft] = useState<ReponerDraft>(emptyReponerDraft);
   const [recogerDraft, setRecogerDraft] = useState<RecogerDraft>(emptyRecogerDraft);
+  const [reactivarDraft, setReactivarDraft] = useState<ReactivarDraft>(emptyReactivarDraft);
   const [showHistorical, setShowHistorical] = useState(false);
 
   const currentEditingClient =
-    mode.kind === "edit" || mode.kind === "reponer" || mode.kind === "recoger"
+    mode.kind === "edit" ||
+    mode.kind === "reponer" ||
+    mode.kind === "recoger" ||
+    mode.kind === "historial" ||
+    mode.kind === "reactivar"
       ? consignmentClients.find((c) => c.id === mode.clientId)
       : undefined;
 
@@ -328,6 +351,30 @@ export default function ConsignacionesPanel({
     }
   }
 
+  async function saveReactivation() {
+    if (mode.kind !== "reactivar" || !currentEditingClient) return;
+    if (reactivarDraft.unitsWithAlcohol === 0 && reactivarDraft.unitsWithoutAlcohol === 0) {
+      onMessage("Debes entregar al menos una unidad");
+      return;
+    }
+    try {
+      await postForm("/api/consignaciones/reactivar", {
+        client_id: currentEditingClient.id,
+        units_with_alcohol: reactivarDraft.unitsWithAlcohol,
+        units_without_alcohol: reactivarDraft.unitsWithoutAlcohol,
+        price_with_alcohol: reactivarDraft.priceWithAlcohol || undefined,
+        price_without_alcohol: reactivarDraft.priceWithoutAlcohol || undefined,
+        notes: reactivarDraft.notes.trim() || undefined
+      });
+      onMessage("Cliente reactivado");
+      setMode({ kind: "create" });
+      setReactivarDraft(emptyReactivarDraft);
+      onRefresh();
+    } catch {
+      onMessage("Error al reactivar cliente");
+    }
+  }
+
   function loadClientForEdit(clientId: string) {
     const client = consignmentClients.find((c) => c.id === clientId);
     if (!client) return;
@@ -355,11 +402,26 @@ export default function ConsignacionesPanel({
     setMode({ kind: "recoger", clientId });
   }
 
+  function loadClientForHistorial(clientId: string) {
+    setMode({ kind: "historial", clientId });
+  }
+
+  function loadClientForReactivar(clientId: string) {
+    const client = consignmentClients.find((c) => c.id === clientId);
+    setReactivarDraft({
+      ...emptyReactivarDraft,
+      priceWithAlcohol: client?.priceWithAlcohol?.toString() ?? "",
+      priceWithoutAlcohol: client?.priceWithoutAlcohol?.toString() ?? ""
+    });
+    setMode({ kind: "reactivar", clientId });
+  }
+
   function cancelEdit() {
     setMode({ kind: "create" });
     setClientDraft(emptyClientDraft);
     setReponerDraft(emptyReponerDraft);
     setRecogerDraft(emptyRecogerDraft);
+    setReactivarDraft(emptyReactivarDraft);
   }
 
   const reponerEffectivePriceWithAlcohol =
@@ -406,6 +468,10 @@ export default function ConsignacionesPanel({
         return `Reponer ${currentEditingClient?.name ?? ""}`;
       case "recoger":
         return `Recoger ${currentEditingClient?.name ?? ""}`;
+      case "historial":
+        return `Historial · ${currentEditingClient?.name ?? ""}`;
+      case "reactivar":
+        return `Reactivar ${currentEditingClient?.name ?? ""}`;
     }
   })();
 
@@ -419,6 +485,10 @@ export default function ConsignacionesPanel({
         return "Registrar reposición";
       case "recoger":
         return "Registrar recogida";
+      case "historial":
+        return "";
+      case "reactivar":
+        return "Reactivar cliente";
     }
   })();
 
@@ -431,6 +501,10 @@ export default function ConsignacionesPanel({
         return saveReplenishment();
       case "recoger":
         return savePickup();
+      case "reactivar":
+        return saveReactivation();
+      case "historial":
+        return;
     }
   }
 
@@ -611,7 +685,9 @@ export default function ConsignacionesPanel({
                     fontSize: "0.9rem"
                   }}
                 >
-                  {reponerDraft.unitsDeliveredWithAlcohol}A · {reponerDraft.unitsDeliveredWithoutAlcohol}SA
+                  {Math.max(reponerDraft.unitsDeliveredWithAlcohol, currentEditingClient?.baseQuantityWithAlcohol ?? 0)}A
+                  {" · "}
+                  {Math.max(reponerDraft.unitsDeliveredWithoutAlcohol, currentEditingClient?.baseQuantityWithoutAlcohol ?? 0)}SA
                 </div>
               </Field>
               <Field label="Notas">
@@ -714,23 +790,97 @@ export default function ConsignacionesPanel({
             </div>
           )}
 
+          {mode.kind === "historial" && currentEditingClient && (
+            <div style={{ marginTop: "1rem", color: "var(--muted)", fontSize: "0.9rem" }}>
+              <p>
+                {currentEditingClient.address}
+                {currentEditingClient.phone ? ` · ${currentEditingClient.phone}` : ""}
+              </p>
+              <a
+                href={googleMapsUrl(currentEditingClient)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--accent)", textDecoration: "underline" }}
+              >
+                Ver en Google Maps
+              </a>
+            </div>
+          )}
+
+          {mode.kind === "reactivar" && currentEditingClient && (
+            <div className="grid-2">
+              <Field label="Unidades a entregar con alcohol">
+                <Input
+                  type="number"
+                  value={displayNumber(reactivarDraft.unitsWithAlcohol)}
+                  onChange={(e) =>
+                    setReactivarDraft({ ...reactivarDraft, unitsWithAlcohol: parseNumber(e.currentTarget.value) })
+                  }
+                  min={0}
+                />
+              </Field>
+              <Field label="Unidades a entregar sin alcohol">
+                <Input
+                  type="number"
+                  value={displayNumber(reactivarDraft.unitsWithoutAlcohol)}
+                  onChange={(e) =>
+                    setReactivarDraft({ ...reactivarDraft, unitsWithoutAlcohol: parseNumber(e.currentTarget.value) })
+                  }
+                  min={0}
+                />
+              </Field>
+              <Field label={`Precio con alcohol (anterior: $${currentEditingClient.priceWithAlcohol ?? defaultPriceWithAlcohol})`}>
+                <Input
+                  type="number"
+                  value={reactivarDraft.priceWithAlcohol}
+                  onChange={(e) =>
+                    setReactivarDraft({ ...reactivarDraft, priceWithAlcohol: e.currentTarget.value })
+                  }
+                  placeholder={(currentEditingClient.priceWithAlcohol ?? defaultPriceWithAlcohol).toString()}
+                />
+              </Field>
+              <Field label={`Precio sin alcohol (anterior: $${currentEditingClient.priceWithoutAlcohol ?? defaultPriceWithoutAlcohol})`}>
+                <Input
+                  type="number"
+                  value={reactivarDraft.priceWithoutAlcohol}
+                  onChange={(e) =>
+                    setReactivarDraft({ ...reactivarDraft, priceWithoutAlcohol: e.currentTarget.value })
+                  }
+                  placeholder={(currentEditingClient.priceWithoutAlcohol ?? defaultPriceWithoutAlcohol).toString()}
+                />
+              </Field>
+              <Field label="Notas">
+                <TextArea
+                  value={reactivarDraft.notes}
+                  onChange={(e) => setReactivarDraft({ ...reactivarDraft, notes: e.currentTarget.value })}
+                  placeholder="Observaciones de reactivación..."
+                />
+              </Field>
+            </div>
+          )}
+
           <div className="actions">
             {mode.kind !== "create" && (
               <Button onClick={cancelEdit} variant="ghost">
                 Cancelar
               </Button>
             )}
-            <Button onClick={onSubmit}>
-              {mode.kind === "create" ? <Plus size={16} /> : null}
-              {submitLabel}
-            </Button>
+            {mode.kind !== "historial" && (
+              <Button onClick={onSubmit}>
+                {mode.kind === "create" ? <Plus size={16} /> : null}
+                {submitLabel}
+              </Button>
+            )}
           </div>
 
-          {(mode.kind === "reponer" || mode.kind === "recoger") &&
+          {(mode.kind === "reponer" ||
+            mode.kind === "recoger" ||
+            mode.kind === "historial" ||
+            mode.kind === "reactivar") &&
             currentEditingClient &&
             timelineEvents.length > 0 && (
               <div className="consignment-timeline">
-                <h4>Historial</h4>
+                <h4>Historial de movimientos</h4>
                 <ul>
                   {timelineEvents.map((ev) => (
                     <li key={ev.id} className={`timeline-event timeline-${ev.kind}`}>
@@ -872,11 +1022,20 @@ export default function ConsignacionesPanel({
                       <p className="consignment-card-notes">📝 {client.notes}</p>
                     )}
                     <div className="consignment-card-actions">
-                      <Button variant="ghost" onClick={() => loadClientForEdit(client.id)}>
-                        Editar
-                      </Button>
-                      {!isClosed && (
+                      {isClosed ? (
                         <>
+                          <Button variant="ghost" onClick={() => loadClientForHistorial(client.id)}>
+                            Historial
+                          </Button>
+                          <Button variant="ghost" onClick={() => loadClientForReactivar(client.id)}>
+                            Reactivar
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button variant="ghost" onClick={() => loadClientForEdit(client.id)}>
+                            Editar
+                          </Button>
                           <Button variant="ghost" onClick={() => loadClientForReponer(client.id)}>
                             Reponer
                           </Button>

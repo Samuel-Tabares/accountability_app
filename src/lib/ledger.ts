@@ -294,6 +294,14 @@ export function calculateLedger(state: AppState): CalculatedState {
     .slice()
     .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
 
+  // IDs de sales generadas al cobrar faltantes en recogidas (consumeStock=false).
+  // No deben descontar del inventario simulado — el stock ya fue consumido en la entrega.
+  const pickupChargeSaleIds = new Set<string>(
+    (state.consignmentPickups ?? [])
+      .flatMap((p) => [p.saleIdWithAlcohol, p.saleIdWithoutAlcohol])
+      .filter((id): id is string => Boolean(id))
+  );
+
   const sales: SaleLedger[] = sortedSales.map((sale) => {
     const ambassador = resolveAmbassador(state.ambassadors, sale);
     const {
@@ -307,7 +315,8 @@ export function calculateLedger(state: AppState): CalculatedState {
       commissionValue,
       clientSavings
     } = resolveStoredWholesaleSnapshot(state.settings, ambassador, sale, new Date(sale.createdAt));
-    const consumption = fifoConsume(batches, saleUnitsConsumed(sale), resolvedVariant);
+    const isPickupCharge = pickupChargeSaleIds.has(sale.id);
+    const consumption = fifoConsume(batches, isPickupCharge ? 0 : saleUnitsConsumed(sale), resolvedVariant);
     const realTotal = wholesaleNetTotal;
     const costOfGoods = sale.costOfGoods ?? consumption.cost;
     const grossProfit = sale.grossProfit ?? realTotal - costOfGoods;
@@ -361,9 +370,25 @@ export function calculateLedger(state: AppState): CalculatedState {
   const commissionExpensesTotal = commissionExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   const regularExpensesTotal = regularExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   const expensesTotal = regularExpensesTotal + commissionExpensesTotal + legacyCommissionTotal;
+  // IDs de entregas de consignación (no shortage charges): stock en tránsito, no COGS de venta
+  const consignmentDeliverySaleIds = new Set<string>(
+    sales
+      .filter((s) => s.saleType === "consignment" && !pickupChargeSaleIds.has(s.id))
+      .map((s) => s.id)
+  );
+
   const baseSales = sales.reduce((sum, sale) => sum + sale.priceTotal, 0);
   const revenue = sales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
-  const costOfGoods = sales.reduce((sum, sale) => sum + sale.costOfGoods, 0);
+  // COGS de ventas reales: excluye entregas de consignación en tránsito
+  const costOfGoods = sales.reduce(
+    (sum, sale) => (consignmentDeliverySaleIds.has(sale.id) ? sum : sum + sale.costOfGoods),
+    0
+  );
+  // Costo del stock actualmente en manos de clientes consignación
+  const consignmentStockCogs = sales.reduce(
+    (sum, sale) => (consignmentDeliverySaleIds.has(sale.id) ? sum + sale.costOfGoods : sum),
+    0
+  );
   const commissions = commissionExpensesTotal + legacyCommissionTotal;
   const discounts = Math.max(0, baseSales - revenue);
   const grossProfit = revenue - costOfGoods;
@@ -397,7 +422,8 @@ export function calculateLedger(state: AppState): CalculatedState {
       unitsProduced,
       unitsRemaining,
       consignedWithAlcohol,
-      consignedWithoutAlcohol
+      consignedWithoutAlcohol,
+      consignmentStockCogs
     }
   };
 }

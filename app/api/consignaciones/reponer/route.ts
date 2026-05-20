@@ -63,9 +63,9 @@ export async function POST(request: NextRequest) {
   const amountWithout = Math.min(unitsDeliveredWithout, clientData.base_quantity_without_alcohol) * unitPriceWithoutAlcohol;
   const amountCharged = amountWith + amountWithout;
 
-  // Nueva base = unidades entregadas
-  const resolvedBaseWithAlcohol = unitsDeliveredWith;
-  const resolvedBaseWithoutAlcohol = unitsDeliveredWithout;
+  // La base solo sube, nunca baja: si se entrega menos que la base actual, la base se mantiene
+  const resolvedBaseWithAlcohol = Math.max(unitsDeliveredWith, clientData.base_quantity_with_alcohol);
+  const resolvedBaseWithoutAlcohol = Math.max(unitsDeliveredWithout, clientData.base_quantity_without_alcohol);
 
   const saleWith = await createConsignmentSale(
     auth.adminClient,

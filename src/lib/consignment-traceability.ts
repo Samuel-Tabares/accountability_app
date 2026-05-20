@@ -26,7 +26,7 @@ export async function computeClientBatchOutstanding(
 
   const { data: clientRow } = await admin
     .from("consignment_clients")
-    .select("initial_sale_id_with_alcohol, initial_sale_id_without_alcohol")
+    .select("initial_sale_id_with_alcohol, initial_sale_id_without_alcohol, base_quantity_with_alcohol, base_quantity_without_alcohol")
     .eq("id", clientId)
     .single();
 
@@ -93,18 +93,14 @@ export async function computeClientBatchOutstanding(
     deliveredByBatch.set(row.batch_id, Math.max(0, current - Number(row.units)));
   }
 
-  // 4. Total client consumption (units the client has sold) = sum of replenishments.units_delivered_*
-  const deliveredField =
-    variant === "withAlcohol" ? "units_delivered_with_alcohol" : "units_delivered_without_alcohol";
-  const { data: replenishments } = await admin
-    .from("consignment_replenishments")
-    .select(deliveredField)
-    .eq("client_id", clientId);
-
-  const consumedByClient = (replenishments ?? []).reduce(
-    (sum, r) => sum + Number((r as Record<string, unknown>)[deliveredField] ?? 0),
-    0
-  );
+  // 4. consumedByClient = totalDelivered (post-returns) − currentBase
+  // El cliente actualmente tiene `currentBase` unidades. Todo lo que llegó menos lo que quedó = lo que vendió.
+  const totalDelivered = Array.from(deliveredByBatch.values()).reduce((s, v) => s + v, 0);
+  const currentBase =
+    variant === "withAlcohol"
+      ? (clientRow?.base_quantity_with_alcohol ?? 0)
+      : (clientRow?.base_quantity_without_alcohol ?? 0);
+  const consumedByClient = Math.max(0, totalDelivered - currentBase);
 
   // 5. Fetch batches to order outstanding FIFO by created_at
   const batchIds = Array.from(deliveredByBatch.keys());
