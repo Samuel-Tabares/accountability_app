@@ -69,7 +69,10 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     isWithinRange(expense.createdAt, currentWeekBounds.start, currentWeekBounds.end)
   );
   const weeklyRevenue = weeklySales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
-  const weeklyCostOfGoods = weeklySales.reduce((sum, sale) => sum + sale.costOfGoods, 0);
+  const weeklyCostOfGoods = weeklySales.reduce(
+    (sum, sale) => (sale.isConsignmentDelivery ? sum : sum + sale.costOfGoods),
+    0
+  );
   const weeklyCommissionExpenses = weeklyExpenses.filter(
     (expense) => expense.type === "commission" && Boolean(expense.sourceSaleId)
   );
@@ -168,8 +171,15 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             icon={<Factory size={18} />}
             label="Costo producción"
             value={formatCurrency(ledger.totals.costOfGoods)}
-            subtext="Costo FIFO de granizados vendidos."
+            subtext="Costo FIFO de granizados vendidos (excluye consignación)."
             accent="accent-orange"
+          />
+          <MetricCard
+            icon={<Package size={18} />}
+            label="Stock en consignación"
+            value={formatCurrency(ledger.totals.consignmentStockCogs)}
+            subtext="Costo de producción del stock actualmente en establecimientos."
+            accent="accent-cream"
           />
           <MetricCard
             icon={<Hammer size={18} />}
@@ -194,9 +204,9 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
           />
           <MetricCard
             icon={<Package size={18} />}
-            label="Consignados"
+            label="Unidades consignadas"
             value={`${ledger.totals.consignedWithAlcohol}A / ${ledger.totals.consignedWithoutAlcohol}SA`}
-            subtext="Granizados fuera en establecimientos."
+            subtext="Unidades actualmente en establecimientos."
             accent="accent-cream"
           />
         </header>

@@ -263,7 +263,7 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
             <div>
               <h3>Ventas recientes</h3>
               <p>
-                Costo FIFO: {formatCurrency(ledger.totals.costOfGoods)} | Descuentos:{" "}
+                Costo producción (ventas): {formatCurrency(ledger.totals.costOfGoods)} | Descuentos:{" "}
                 {formatCurrency(ledger.totals.discounts)} | Comisiones:{" "}
                 {formatCurrency(ledger.totals.commissions)}
               </p>

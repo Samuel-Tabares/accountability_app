@@ -219,6 +219,7 @@ export type SaleLedger = Sale & {
   margin: number;
   resolvedVariant: ProductVariant;
   displayLabel: string;
+  isConsignmentDelivery: boolean;
 };
 
 export type CalculatedState = {

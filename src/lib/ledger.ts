@@ -316,6 +316,7 @@ export function calculateLedger(state: AppState): CalculatedState {
       clientSavings
     } = resolveStoredWholesaleSnapshot(state.settings, ambassador, sale, new Date(sale.createdAt));
     const isPickupCharge = pickupChargeSaleIds.has(sale.id);
+    const isConsignmentDelivery = sale.saleType === "consignment" && !isPickupCharge;
     const consumption = fifoConsume(batches, isPickupCharge ? 0 : saleUnitsConsumed(sale), resolvedVariant);
     const realTotal = wholesaleNetTotal;
     const costOfGoods = sale.costOfGoods ?? consumption.cost;
@@ -335,6 +336,7 @@ export function calculateLedger(state: AppState): CalculatedState {
       netProfit,
       margin,
       resolvedVariant,
+      isConsignmentDelivery,
       displayLabel:
         sale.saleType === "wholesale"
           ? `${saleTypeLabel(sale.saleType, resolvedVariant)} · ${
