@@ -512,7 +512,7 @@ export default function ConsignacionesPanel({
     <Section
       eyebrow="Establecimientos y reposiciones"
       title="Consignaciones"
-      description="Gestiona entregas sin cobro inmediato, reposiciones y recogidas."
+      description="cliente vende FIFO, yo recojo FIFO. Gestiona entregas sin cobro inmediato, reposiciones y recogidas."
     >
       <div className="form-grid split">
         <div className="form-card">
