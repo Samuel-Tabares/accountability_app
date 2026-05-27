@@ -1571,6 +1571,53 @@ button:disabled {
   }
 }
 
+/* Consignaciones: alert banner for urgent replenishments */
+.alert-banner {
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.alert-banner span {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.alert-banner .button {
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.replenishment-overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.replenishment-soon {
+  color: var(--berry);
+  font-weight: 600;
+}
+
+/* Consignaciones: grid adjustments for form sections */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 760px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1080px) {
   .ambassador-row {
     gap: 0.65rem;
@@ -1590,4 +1637,182 @@ button:disabled {
   .ambassador-row-actions {
     width: 100%;
   }
+}
+
+/* Consignaciones v2 — cards y timeline */
+.consignment-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.consignment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--radius-md, 12px);
+}
+
+.consignment-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.consignment-card-head strong {
+  font-size: 1.05rem;
+}
+
+.consignment-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.consignment-card-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px dashed var(--border, rgba(0, 0, 0, 0.08));
+  border-bottom: 1px dashed var(--border, rgba(0, 0, 0, 0.08));
+}
+
+.consignment-card-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.consignment-card-stats span {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.consignment-card-stats strong {
+  font-size: 0.95rem;
+}
+
+.consignment-card-notes {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: var(--surface-soft);
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+}
+
+.consignment-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.badge-green {
+  background: rgba(34, 197, 94, 0.15);
+  color: rgb(21, 128, 61);
+}
+
+.badge-amber {
+  background: rgba(245, 158, 11, 0.18);
+  color: rgb(146, 64, 14);
+}
+
+.badge-red {
+  background: rgba(239, 68, 68, 0.18);
+  color: rgb(153, 27, 27);
+}
+
+.badge-muted {
+  background: rgba(100, 116, 139, 0.18);
+  color: rgb(51, 65, 85);
+}
+
+.consignment-timeline {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
+
+.consignment-timeline h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.consignment-timeline ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.timeline-event {
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-soft);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--border, rgba(0, 0, 0, 0.15));
+  font-size: 0.88rem;
+}
+
+.timeline-delivery {
+  border-left-color: rgb(34, 197, 94);
+}
+
+.timeline-replenishment {
+  border-left-color: rgb(59, 130, 246);
+}
+
+.timeline-pickup {
+  border-left-color: rgb(168, 85, 247);
+}
+
+.timeline-event-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.timeline-event-head span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.timeline-event-body {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.timeline-event-notes {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
 }

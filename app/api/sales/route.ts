@@ -11,7 +11,8 @@ import { getRouteAuthContext } from "@/src/lib/route-auth";
 import { createRateLimitHtmlResponse, rateLimitEmbajador } from "@/src/lib/rate-limit";
 import { isMissingColumnError, isProfileBoostActive, jsonResponse, setRedirect, wantsJson } from "@/src/lib/api-utils";
 import { PROMO_UNITS_MULTIPLIER, WHOLESALE_MIN_QUANTITY } from "@/src/lib/constants";
-import type { PricingVersionRow, PricingWholesaleTierRow, ProductionBatchRow, ProfileRow, SaleType } from "@/src/lib/supabase/types";
+import { resolveFifoCost } from "@/src/lib/fifo";
+import type { PricingVersionRow, PricingWholesaleTierRow, ProfileRow, SaleType } from "@/src/lib/supabase/types";
 
 function saleTotal(
   settings: ReturnType<typeof pricingRowsToSettings>,
@@ -32,50 +33,13 @@ function saleTotal(
       return settings.giftNoAlcoholPrice * quantity;
     case "wholesale":
       return (resolveWholesaleSelection(settings, wholesaleVariant, quantity).tier?.unitPrice ?? 0) * quantity;
+    case "consignment":
+      return 0;
   }
 }
 
 function unitsConsumed(saleType: SaleType, quantity: number) {
   return saleType === "promo" ? quantity * PROMO_UNITS_MULTIPLIER : quantity;
-}
-
-async function resolveFifoCost(
-  adminClient: any,
-  variant: "withAlcohol" | "withoutAlcohol",
-  units: number
-) {
-  const [batchesResult, consumptionsResult] = await Promise.all([
-    adminClient.from("production_batches").select("*").eq("variant", variant).order("created_at", { ascending: true }),
-    adminClient.from("sale_batch_consumptions").select("batch_id, units")
-  ]);
-
-  const batches = (batchesResult.data ?? []) as ProductionBatchRow[];
-  const consumedByBatch = new Map<string, number>();
-  for (const row of consumptionsResult.data ?? []) {
-    const batchId = row.batch_id;
-    if (!batchId) continue;
-    consumedByBatch.set(batchId, (consumedByBatch.get(batchId) ?? 0) + Number(row.units));
-  }
-
-  let remaining = units;
-  let totalCost = 0;
-  const rows: Array<{ batch_id: string; units: number; cost: number }> = [];
-
-  for (const batch of batches) {
-    if (remaining <= 0) break;
-
-    const alreadyConsumed = consumedByBatch.get(batch.id) ?? 0;
-    const available = Math.max(0, batch.units_produced - alreadyConsumed);
-    if (available <= 0) continue;
-
-    const take = Math.min(available, remaining);
-    const cost = take * (Number(batch.total_cost) / batch.units_produced);
-    rows.push({ batch_id: batch.id, units: take, cost });
-    totalCost += cost;
-    remaining -= take;
-  }
-
-  return { totalCost, rows };
 }
 
 export async function POST(request: NextRequest) {

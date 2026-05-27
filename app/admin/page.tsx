@@ -4,16 +4,34 @@ import { requireAuthContext } from "@/src/lib/auth";
 import { pricingRowsToSettings } from "@/src/lib/pricing";
 import { blankState } from "@/src/lib/seed";
 import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
+import { computeAllClientsStockCogs } from "@/src/lib/consignment-traceability";
 import type {
+  ConsignmentClientRow,
+  ConsignmentPickupRow,
+  ConsignmentReplenishmentRow,
   ExpenseRow,
+  InventoryReturnRow,
   PricingVersionRow,
   PricingWholesaleTierRow,
   ProductionBatchItemRow,
   ProductionBatchRow,
   ProfileRow,
+  SaleBatchConsumptionRow,
   SaleRow
 } from "@/src/lib/supabase/types";
-import type { Ambassador, AppState, BatchLineItem, Expense, ProductionBatch, Sale } from "@/src/lib/types";
+import type {
+  Ambassador,
+  AppState,
+  BatchLineItem,
+  ConsignmentClient,
+  ConsignmentPickup,
+  ConsignmentReplenishment,
+  Expense,
+  InventoryReturn,
+  ProductionBatch,
+  Sale,
+  SaleBatchConsumption
+} from "@/src/lib/types";
 
 type Props = {
   searchParams?: Promise<{
@@ -79,6 +97,7 @@ function mapSale(row: SaleRow, profilesById: Map<string, ProfileRow>): Sale {
     netProfit: row.net_profit == null ? undefined : Number(row.net_profit),
     margin: Number(row.margin ?? 0),
     pricingVersionId: row.pricing_version_id ?? undefined,
+    consignmentClientId: row.consignment_client_id ?? undefined,
     note: row.note ?? ""
   };
 }
@@ -120,19 +139,114 @@ function mapBatch(row: ProductionBatchRow, itemsByBatch: Map<string, ProductionB
   };
 }
 
+function mapConsignmentClient(row: ConsignmentClientRow): ConsignmentClient {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    name: row.name,
+    address: row.address,
+    contactName: row.contact_name ?? undefined,
+    phone: row.phone ?? undefined,
+    notes: row.notes ?? undefined,
+    baseQuantityWithAlcohol: row.base_quantity_with_alcohol,
+    baseQuantityWithoutAlcohol: row.base_quantity_without_alcohol,
+    priceWithAlcohol: row.price_with_alcohol ?? undefined,
+    priceWithoutAlcohol: row.price_without_alcohol ?? undefined,
+    nextReplenishmentDate: row.next_replenishment_date,
+    initialSaleIdWithAlcohol: row.initial_sale_id_with_alcohol ?? undefined,
+    initialSaleIdWithoutAlcohol: row.initial_sale_id_without_alcohol ?? undefined
+  };
+}
+
+function mapConsignmentReplenishment(row: ConsignmentReplenishmentRow): ConsignmentReplenishment {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    clientId: row.client_id,
+    unitsDeliveredWithAlcohol: row.units_delivered_with_alcohol,
+    unitsDeliveredWithoutAlcohol: row.units_delivered_without_alcohol,
+    unitPriceWithAlcohol: Number(row.unit_price_with_alcohol),
+    unitPriceWithoutAlcohol: Number(row.unit_price_without_alcohol),
+    amountCharged: Number(row.amount_charged),
+    newBaseWithAlcohol: row.new_base_with_alcohol,
+    newBaseWithoutAlcohol: row.new_base_without_alcohol,
+    notes: row.notes ?? undefined,
+    saleIdWithAlcohol: row.sale_id_with_alcohol ?? undefined,
+    saleIdWithoutAlcohol: row.sale_id_without_alcohol ?? undefined
+  };
+}
+
+function mapConsignmentPickup(row: ConsignmentPickupRow): ConsignmentPickup {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    clientId: row.client_id,
+    unitsCollectedWithAlcohol: row.units_collected_with_alcohol,
+    unitsCollectedWithoutAlcohol: row.units_collected_without_alcohol,
+    unitsChargedWithAlcohol: row.units_charged_with_alcohol,
+    unitsChargedWithoutAlcohol: row.units_charged_without_alcohol,
+    unitPriceWithAlcohol: Number(row.unit_price_with_alcohol),
+    unitPriceWithoutAlcohol: Number(row.unit_price_without_alcohol),
+    amountCharged: Number(row.amount_charged),
+    saleIdWithAlcohol: row.sale_id_with_alcohol ?? undefined,
+    saleIdWithoutAlcohol: row.sale_id_without_alcohol ?? undefined,
+    notes: row.notes ?? undefined
+  };
+}
+
+function mapInventoryReturn(row: InventoryReturnRow): InventoryReturn {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    batchId: row.batch_id,
+    variant: row.variant,
+    units: row.units,
+    sourcePickupId: row.source_pickup_id ?? undefined,
+    sourceClientId: row.source_client_id ?? undefined,
+    notes: row.notes ?? undefined
+  };
+}
+
+function mapSaleBatchConsumption(row: SaleBatchConsumptionRow): SaleBatchConsumption {
+  return {
+    saleId: row.sale_id,
+    batchId: row.batch_id,
+    units: Number(row.units),
+    cost: Number(row.cost)
+  };
+}
+
 export default async function AdminPage({ searchParams }: Props) {
   const auth = await requireAuthContext("admin");
   const params = await searchParams;
   const supabase = createSupabaseAdminClient();
 
-  const [profilesResult, salesResult, expensesResult, batchesResult, batchItemsResult, pricingResult, tiersResult] = await Promise.all([
+  const [
+    profilesResult,
+    salesResult,
+    expensesResult,
+    batchesResult,
+    batchItemsResult,
+    pricingResult,
+    tiersResult,
+    consignmentClientsResult,
+    consignmentReplenishmentsResult,
+    consignmentPickupsResult,
+    inventoryReturnsResult,
+    saleBatchConsumptionsResult
+  ] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("sales").select("*").order("created_at", { ascending: false }),
     supabase.from("expenses").select("*").order("created_at", { ascending: false }),
     supabase.from("production_batches").select("*").order("created_at", { ascending: false }),
     supabase.from("production_batch_items").select("*"),
     supabase.from("pricing_versions").select("*").eq("is_active", true).maybeSingle(),
-    supabase.from("pricing_wholesale_tiers").select("*")
+    supabase.from("pricing_wholesale_tiers").select("*"),
+    supabase.from("consignment_clients").select("*").order("name", { ascending: true }),
+    supabase.from("consignment_replenishments").select("*").order("created_at", { ascending: false }),
+    supabase.from("consignment_pickups").select("*").order("created_at", { ascending: false }),
+    supabase.from("inventory_returns").select("*").order("created_at", { ascending: false }),
+    supabase.from("sale_batch_consumptions").select("sale_id, batch_id, units, cost")
   ]);
 
   if (profilesResult.error || salesResult.error || expensesResult.error) {
@@ -146,7 +260,18 @@ export default async function AdminPage({ searchParams }: Props) {
   const batchItems = (batchItemsResult.data ?? []) as ProductionBatchItemRow[];
   const activePricing = pricingResult.data as PricingVersionRow | null;
   const tiers = (tiersResult.data ?? []) as PricingWholesaleTierRow[];
+  const consignmentClientsRows = (consignmentClientsResult.data ?? []) as ConsignmentClientRow[];
+  const consignmentReplenishmentsRows = (consignmentReplenishmentsResult.data ?? []) as ConsignmentReplenishmentRow[];
+  const consignmentPickupsRows = (consignmentPickupsResult.data ?? []) as ConsignmentPickupRow[];
+  const inventoryReturnsRows = (inventoryReturnsResult.data ?? []) as InventoryReturnRow[];
+  const saleBatchConsumptionsRows = (saleBatchConsumptionsResult.data ?? []) as SaleBatchConsumptionRow[];
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+
+  const consignmentStockCogs = await computeAllClientsStockCogs(
+    supabase,
+    consignmentClientsRows,
+    batches
+  );
   const itemsByBatch = new Map<string, ProductionBatchItemRow[]>();
   for (const item of batchItems) {
     itemsByBatch.set(item.batch_id, [...(itemsByBatch.get(item.batch_id) ?? []), item]);
@@ -161,7 +286,13 @@ export default async function AdminPage({ searchParams }: Props) {
     settings: pricingRowsToSettings(
       activePricing,
       activePricing ? tiers.filter((tier) => tier.pricing_version_id === activePricing.id) : []
-    )
+    ),
+    consignmentClients: consignmentClientsRows.map(mapConsignmentClient),
+    consignmentReplenishments: consignmentReplenishmentsRows.map(mapConsignmentReplenishment),
+    consignmentPickups: consignmentPickupsRows.map(mapConsignmentPickup),
+    inventoryReturns: inventoryReturnsRows.map(mapInventoryReturn),
+    saleBatchConsumptions: saleBatchConsumptionsRows.map(mapSaleBatchConsumption),
+    consignmentStockCogs
   };
 
   return (

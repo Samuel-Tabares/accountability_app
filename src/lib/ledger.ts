@@ -85,11 +85,16 @@ export function saleTypeLabel(
     gift: "Regalo con licor",
     singleNoAlcohol: "Unidad sin licor",
     giftNoAlcohol: "Regalo sin licor",
-    wholesale: "Venta al por mayor"
+    wholesale: "Venta al por mayor",
+    consignment: "Consignación"
   };
 
   if (saleType === "wholesale") {
     return variant === "withAlcohol" ? "Mayorista con licor" : "Mayorista sin licor";
+  }
+
+  if (saleType === "consignment") {
+    return variant === "withAlcohol" ? "Consignación con licor" : "Consignación sin licor";
   }
 
   return labels[saleType];
@@ -100,7 +105,7 @@ export function saleVariantForType(saleType: SaleType, wholesaleVariant?: "withA
     return "withoutAlcohol";
   }
 
-  if (saleType === "wholesale") {
+  if (saleType === "wholesale" || saleType === "consignment") {
     return wholesaleVariant ?? "withAlcohol";
   }
 
@@ -128,6 +133,8 @@ export function resolveSaleUnitPrice(
         sale.wholesaleVariant ?? "withAlcohol",
         sale.quantity
       ).tier?.unitPrice ?? 0;
+    case "consignment":
+      return 0;
   }
 }
 
@@ -178,40 +185,40 @@ function saleRealTotal(sale: Pick<Sale, "priceTotal" | "wholesaleNetTotal">) {
   return sale.wholesaleNetTotal ?? sale.priceTotal;
 }
 
-function cloneBatches(state: AppState): BatchRemaining[] {
+// Reemplaza la simulación FIFO previa por aritmética determinística basada en
+// los `sale_batch_consumptions` y `inventory_returns` reales registrados en BD.
+// La simulación anterior re-aplicaba FIFO oldest-first ignorando los registros,
+// lo que generaba divergencias del display vs estado real cuando había returns
+// o consumos multi-lote.
+function computeBatchesRemaining(state: AppState): BatchRemaining[] {
+  const consumedByBatch = new Map<string, number>();
+  for (const c of state.saleBatchConsumptions ?? []) {
+    if (!c.batchId) continue;
+    consumedByBatch.set(c.batchId, (consumedByBatch.get(c.batchId) ?? 0) + c.units);
+  }
+
+  const returnsByBatch = new Map<string, number>();
+  for (const r of state.inventoryReturns ?? []) {
+    returnsByBatch.set(r.batchId, (returnsByBatch.get(r.batchId) ?? 0) + r.units);
+  }
+
   return state.batches
     .slice()
     .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt))
-    .map((batch) => ({
-      id: batch.id,
-      label: batch.label,
-      variant: batch.variant,
-      unitsRemaining: batch.unitsProduced,
-      unitsProduced: batch.unitsProduced,
-      totalCost: batch.totalCost,
-      unitCost: batch.unitsProduced > 0 ? batch.totalCost / batch.unitsProduced : 0
-    }));
-}
-
-function fifoConsume(
-  batches: BatchRemaining[],
-  units: number,
-  variant: ProductVariant
-) {
-  let remaining = units;
-  let cost = 0;
-
-  for (const batch of batches) {
-    if (remaining <= 0) break;
-    if (batch.variant !== variant || batch.unitsRemaining <= 0) continue;
-
-    const take = Math.min(batch.unitsRemaining, remaining);
-    batch.unitsRemaining -= take;
-    remaining -= take;
-    cost += take * batch.unitCost;
-  }
-
-  return { cost, fulfilled: remaining === 0, remaining };
+    .map((batch) => {
+      const consumed = consumedByBatch.get(batch.id) ?? 0;
+      const returned = returnsByBatch.get(batch.id) ?? 0;
+      const unitsRemaining = Math.max(0, batch.unitsProduced - consumed + returned);
+      return {
+        id: batch.id,
+        label: batch.label,
+        variant: batch.variant,
+        unitsRemaining,
+        unitsProduced: batch.unitsProduced,
+        totalCost: batch.totalCost,
+        unitCost: batch.unitsProduced > 0 ? batch.totalCost / batch.unitsProduced : 0
+      };
+    });
 }
 
 function resolveStoredWholesaleSnapshot(
@@ -277,10 +284,30 @@ function resolveStoredWholesaleSnapshot(
 }
 
 export function calculateLedger(state: AppState): CalculatedState {
-  const batches = cloneBatches(state);
+  const batches = computeBatchesRemaining(state);
   const sortedSales = state.sales
     .slice()
     .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+
+  // Clasificación de sales de consignación por su rol operacional.
+  // Datos disponibles en `state` — sin necesidad de re-querys.
+  const initialDeliverySaleIds = new Set<string>(
+    (state.consignmentClients ?? [])
+      .flatMap((c) => [c.initialSaleIdWithAlcohol, c.initialSaleIdWithoutAlcohol])
+      .filter((id): id is string => Boolean(id))
+  );
+  const replenishmentSaleIds = new Set<string>(
+    (state.consignmentReplenishments ?? [])
+      .flatMap((r) => [r.saleIdWithAlcohol, r.saleIdWithoutAlcohol])
+      .filter((id): id is string => Boolean(id))
+  );
+  // IDs de sales generadas al cobrar faltantes en recogidas (consumeStock=false).
+  // El stock ya fue consumido en la entrega original — son ventas reales.
+  const pickupChargeSaleIds = new Set<string>(
+    (state.consignmentPickups ?? [])
+      .flatMap((p) => [p.saleIdWithAlcohol, p.saleIdWithoutAlcohol])
+      .filter((id): id is string => Boolean(id))
+  );
 
   const sales: SaleLedger[] = sortedSales.map((sale) => {
     const ambassador = resolveAmbassador(state.ambassadors, sale);
@@ -295,12 +322,38 @@ export function calculateLedger(state: AppState): CalculatedState {
       commissionValue,
       clientSavings
     } = resolveStoredWholesaleSnapshot(state.settings, ambassador, sale, new Date(sale.createdAt));
-    const consumption = fifoConsume(batches, saleUnitsConsumed(sale), resolvedVariant);
+    const isPickupCharge = pickupChargeSaleIds.has(sale.id);
+    const isReplenishment = replenishmentSaleIds.has(sale.id);
+    const isInitialDelivery =
+      sale.saleType === "consignment" && initialDeliverySaleIds.has(sale.id);
+    // Para los totales: sólo la entrega inicial es "stock en tránsito".
+    // Reposiciones y cobros de faltantes son ventas reales (el cliente vendió).
+    const isConsignmentDelivery = isInitialDelivery;
     const realTotal = wholesaleNetTotal;
-    const costOfGoods = sale.costOfGoods ?? consumption.cost;
+    const costOfGoods = sale.costOfGoods ?? 0;
     const grossProfit = sale.grossProfit ?? realTotal - costOfGoods;
     const netProfit = sale.netProfit ?? grossProfit - commissionValue;
     const margin = sale.margin ?? (realTotal > 0 ? netProfit / realTotal : 0);
+
+    let displayLabel: string;
+    if (sale.saleType === "wholesale") {
+      displayLabel = `${saleTypeLabel(sale.saleType, resolvedVariant)} · ${
+        sale.ambassadorId || sale.ambassadorCode ? "Con embajador" : "Normal"
+      }`;
+    } else if (sale.saleType === "consignment") {
+      const variantTag = resolvedVariant === "withAlcohol" ? "con licor" : "sin licor";
+      if (isPickupCharge) {
+        displayLabel = `Recogida consignación · cobro faltantes · ${variantTag}`;
+      } else if (isReplenishment) {
+        displayLabel = `Reposición consignación · ${variantTag}`;
+      } else if (isInitialDelivery) {
+        displayLabel = `Entrega inicial consignación · ${variantTag}`;
+      } else {
+        displayLabel = saleTypeLabel(sale.saleType, resolvedVariant);
+      }
+    } else {
+      displayLabel = saleTypeLabel(sale.saleType, resolvedVariant);
+    }
 
     return {
       ...sale,
@@ -314,12 +367,10 @@ export function calculateLedger(state: AppState): CalculatedState {
       netProfit,
       margin,
       resolvedVariant,
-      displayLabel:
-        sale.saleType === "wholesale"
-          ? `${saleTypeLabel(sale.saleType, resolvedVariant)} · ${
-              sale.ambassadorId || sale.ambassadorCode ? "Con embajador" : "Normal"
-            }`
-          : saleTypeLabel(sale.saleType, resolvedVariant),
+      isConsignmentDelivery,
+      isReplenishment,
+      isPickupCharge,
+      displayLabel,
       wholesaleDiscountPct,
       wholesaleDiscountValue,
       wholesaleNetTotal,
@@ -349,17 +400,36 @@ export function calculateLedger(state: AppState): CalculatedState {
   const commissionExpensesTotal = commissionExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   const regularExpensesTotal = regularExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   const expensesTotal = regularExpensesTotal + commissionExpensesTotal + legacyCommissionTotal;
+
   const baseSales = sales.reduce((sum, sale) => sum + sale.priceTotal, 0);
   const revenue = sales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
-  const costOfGoods = sales.reduce((sum, sale) => sum + sale.costOfGoods, 0);
+  // unitsSold reales (excluye entregas iniciales de consignación que aún no se "vendieron")
+  const unitsSold = sales.reduce(
+    (sum, sale) => (sale.isConsignmentDelivery ? sum : sum + saleUnitsConsumed(sale)),
+    0
+  );
+  // consignmentStockCogs viene precomputado del server (outstanding × unit_cost por cliente).
+  // Refleja el costo del stock que ACTUALMENTE está físicamente en clientes.
+  const consignmentStockCogs = state.consignmentStockCogs ?? 0;
+  const unitsProduced = state.batches.reduce((sum, batch) => sum + batch.unitsProduced, 0);
+  const unitsRemaining = batches.reduce((sum, batch) => sum + batch.unitsRemaining, 0);
+  const investment = state.batches.reduce((sum, batch) => sum + batch.totalCost, 0);
+  // COGS de ventas reales = inversión menos lo que queda en bodega menos lo que queda en clientes.
+  // Esta fórmula es robusta ante `inventory_returns` (devoluciones al stock al recoger),
+  // que NO deben contar como COGS. Sumar `sale.costOfGoods` directamente sobre-contabiliza
+  // porque las unidades devueltas vía returns ya regresaron al stockOnHand.
+  const stockOnHand = batches.reduce((sum, batch) => sum + batch.unitsRemaining * batch.unitCost, 0);
+  const costOfGoods = Math.max(0, investment - stockOnHand - consignmentStockCogs);
   const commissions = commissionExpensesTotal + legacyCommissionTotal;
   const discounts = Math.max(0, baseSales - revenue);
   const grossProfit = revenue - costOfGoods;
   const netProfit = grossProfit - commissions - regularExpensesTotal;
-  const unitsSold = sales.reduce((sum, sale) => sum + saleUnitsConsumed(sale), 0);
-  const unitsProduced = state.batches.reduce((sum, batch) => sum + batch.unitsProduced, 0);
-  const unitsRemaining = batches.reduce((sum, batch) => sum + batch.unitsRemaining, 0);
-  const investment = state.batches.reduce((sum, batch) => sum + batch.totalCost, 0);
+  const consignedWithAlcohol = state.consignmentClients
+    .filter((c) => c.baseQuantityWithAlcohol > 0 || c.baseQuantityWithoutAlcohol > 0)
+    .reduce((sum, c) => sum + c.baseQuantityWithAlcohol, 0);
+  const consignedWithoutAlcohol = state.consignmentClients
+    .filter((c) => c.baseQuantityWithAlcohol > 0 || c.baseQuantityWithoutAlcohol > 0)
+    .reduce((sum, c) => sum + c.baseQuantityWithoutAlcohol, 0);
 
   return {
     batches,
@@ -377,7 +447,10 @@ export function calculateLedger(state: AppState): CalculatedState {
       netProfit,
       unitsSold,
       unitsProduced,
-      unitsRemaining
+      unitsRemaining,
+      consignedWithAlcohol,
+      consignedWithoutAlcohol,
+      consignmentStockCogs
     }
   };
 }

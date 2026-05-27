@@ -53,6 +53,8 @@ function saleTotalPrice(
       const selection = resolveWholesaleSelection(settings, wholesaleVariant, quantity);
       return (selection.tier?.unitPrice ?? 0) * quantity;
     }
+    case "consignment":
+      return 0;
   }
 }
 
@@ -99,6 +101,55 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
     { key: "wholesale", label: "Venta al por mayor" }
   ];
   const filteredSales = ledger.sales.slice().sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+  const consignmentClientById = new Map(state.consignmentClients.map((c) => [c.id, c]));
+
+  // Entradas virtuales de recogidas en el registro (solo visual). El cobro de
+  // faltantes ya aparece como su propia sale; estas filas representan el evento
+  // físico de devolución, con $0 porque no se está recibiendo dinero.
+  type PickupRow = {
+    kind: "pickup";
+    id: string;
+    createdAt: string;
+    variant: ProductVariant;
+    clientName: string;
+    collected: number;
+    faltantes: number;
+  };
+  const pickupRows: PickupRow[] = (state.consignmentPickups ?? []).flatMap((pickup) => {
+    const client = consignmentClientById.get(pickup.clientId);
+    const rows: PickupRow[] = [];
+    if (pickup.unitsCollectedWithAlcohol > 0) {
+      rows.push({
+        kind: "pickup",
+        id: `${pickup.id}-with`,
+        createdAt: pickup.createdAt,
+        variant: "withAlcohol",
+        clientName: client?.name ?? "Cliente eliminado",
+        collected: pickup.unitsCollectedWithAlcohol,
+        faltantes: pickup.unitsChargedWithAlcohol
+      });
+    }
+    if (pickup.unitsCollectedWithoutAlcohol > 0) {
+      rows.push({
+        kind: "pickup",
+        id: `${pickup.id}-without`,
+        createdAt: pickup.createdAt,
+        variant: "withoutAlcohol",
+        clientName: client?.name ?? "Cliente eliminado",
+        collected: pickup.unitsCollectedWithoutAlcohol,
+        faltantes: pickup.unitsChargedWithoutAlcohol
+      });
+    }
+    return rows;
+  });
+
+  type RegistryItem =
+    | { kind: "sale"; createdAt: string; sale: (typeof filteredSales)[number] }
+    | PickupRow;
+  const registryItems: RegistryItem[] = [
+    ...filteredSales.map((sale) => ({ kind: "sale" as const, createdAt: sale.createdAt, sale })),
+    ...pickupRows
+  ].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 
   function updateSaleForm(field: string, value: string | number | boolean) {
     setSaleForm((prev) => {
@@ -260,19 +311,45 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
             <div>
               <h3>Ventas recientes</h3>
               <p>
-                Costo FIFO: {formatCurrency(ledger.totals.costOfGoods)} | Descuentos:{" "}
+                Costo producción (ventas): {formatCurrency(ledger.totals.costOfGoods)} | Descuentos:{" "}
                 {formatCurrency(ledger.totals.discounts)} | Comisiones:{" "}
                 {formatCurrency(ledger.totals.commissions)}
               </p>
             </div>
-            <span className="chip">{filteredSales.length} registros</span>
+            <span className="chip">{registryItems.length} registros</span>
           </div>
 
           <div className="stack-table">
-            {filteredSales.slice(0, 8).map((sale) => (
+            {registryItems.slice(0, 8).map((item) => {
+              if (item.kind === "pickup") {
+                const variantLabel = item.variant === "withAlcohol" ? "con licor" : "sin licor";
+                return (
+                  <article key={item.id} className="table-row">
+                    <div>
+                      <strong>Recogida consignación · {variantLabel} · {item.clientName}</strong>
+                      <span>
+                        Recogidas {item.collected} · Faltantes {item.faltantes} · {formatDate(item.createdAt)}
+                      </span>
+                    </div>
+                    <div className="row-meta">
+                      <strong>{formatCurrency(0)}</strong>
+                      <span>Sin cobro</span>
+                    </div>
+                  </article>
+                );
+              }
+              const sale = item.sale;
+              const consignmentClient =
+                sale.saleType === "consignment" && sale.consignmentClientId
+                  ? consignmentClientById.get(sale.consignmentClientId)
+                  : undefined;
+              const titleLabel = consignmentClient
+                ? `${sale.displayLabel} · ${consignmentClient.name}`
+                : sale.displayLabel;
+              return (
               <article key={sale.id} className="table-row">
                 <div>
-                  <strong>{sale.displayLabel}</strong>
+                  <strong>{titleLabel}</strong>
                   <span>
                     {sale.saleType === "promo"
                       ? `${sale.quantity} promo(s) · ${sale.quantity * 2} granizados`
@@ -294,7 +371,8 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
                   </span>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

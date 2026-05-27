@@ -9,6 +9,7 @@ import {
   HandCoins,
   Hammer,
   LogOut,
+  Package,
   Percent
 } from "lucide-react";
 import { calculateLedger, formatCurrency, formatDate, summarizeExpenses } from "@/src/lib/ledger";
@@ -19,8 +20,9 @@ import ProductionPanel from "./components/ProductionPanel";
 import ExpensesPanel from "./components/ExpensesPanel";
 import AmbassadorsPanel from "./components/AmbassadorsPanel";
 import SettingsPanel from "./components/SettingsPanel";
+import ConsignacionesPanel from "./components/ConsignacionesPanel";
 
-type ActivePanel = "sales" | "production" | "expenses" | "ambassadors" | "settings";
+type ActivePanel = "sales" | "production" | "expenses" | "ambassadors" | "settings" | "consignaciones";
 
 type AdminDashboardProps = {
   initialState: AppState;
@@ -67,7 +69,10 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     isWithinRange(expense.createdAt, currentWeekBounds.start, currentWeekBounds.end)
   );
   const weeklyRevenue = weeklySales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
-  const weeklyCostOfGoods = weeklySales.reduce((sum, sale) => sum + sale.costOfGoods, 0);
+  const weeklyCostOfGoods = weeklySales.reduce(
+    (sum, sale) => (sale.isConsignmentDelivery ? sum : sum + sale.costOfGoods),
+    0
+  );
   const weeklyCommissionExpenses = weeklyExpenses.filter(
     (expense) => expense.type === "commission" && Boolean(expense.sourceSaleId)
   );
@@ -95,6 +100,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     { key: "production", label: "Lotes" },
     { key: "expenses", label: "Gastos manuales" },
     { key: "ambassadors", label: "Embajadores" },
+    { key: "consignaciones", label: "Consignaciones" },
     { key: "settings", label: "Configuración" }
   ];
 
@@ -165,8 +171,15 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             icon={<Factory size={18} />}
             label="Costo producción"
             value={formatCurrency(ledger.totals.costOfGoods)}
-            subtext="Costo FIFO de granizados vendidos."
+            subtext="Costo FIFO de granizados vendidos (excluye consignación)."
             accent="accent-orange"
+          />
+          <MetricCard
+            icon={<Package size={18} />}
+            label="Stock en consignación"
+            value={formatCurrency(ledger.totals.consignmentStockCogs)}
+            subtext="Costo de producción del stock actualmente en establecimientos."
+            accent="accent-cream"
           />
           <MetricCard
             icon={<Hammer size={18} />}
@@ -187,6 +200,13 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             label="Utilidad neta"
             value={formatCurrency(ledger.totals.netProfit)}
             subtext="Utilidad bruta menos comisiones y gastos manuales."
+            accent="accent-cream"
+          />
+          <MetricCard
+            icon={<Package size={18} />}
+            label="Unidades consignadas"
+            value={`${ledger.totals.consignedWithAlcohol}A / ${ledger.totals.consignedWithoutAlcohol}SA`}
+            subtext="Unidades actualmente en establecimientos."
             accent="accent-cream"
           />
         </header>
@@ -252,6 +272,18 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
         {panel === "settings" ? (
           <SettingsPanel
             initialSettings={state.settings}
+            onRefresh={refreshDashboard}
+            onMessage={showMessage}
+          />
+        ) : null}
+
+        {panel === "consignaciones" ? (
+          <ConsignacionesPanel
+            consignmentClients={state.consignmentClients}
+            consignmentReplenishments={state.consignmentReplenishments}
+            consignmentPickups={state.consignmentPickups}
+            defaultPriceWithAlcohol={4900}
+            defaultPriceWithoutAlcohol={4800}
             onRefresh={refreshDashboard}
             onMessage={showMessage}
           />

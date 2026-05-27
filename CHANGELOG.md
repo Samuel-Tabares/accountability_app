@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.10.0] - 2026-05-27
+
+### Added
+
+- **Consignaciones module** — full operational flow for placing inventory in third-party establishments and reconciling on pickup.
+  - Supabase migrations `0005_consignaciones.sql`, `0006_consignaciones_fix.sql`, `0007_consignaciones_pickup.sql` add `consignment_clients`, `consignment_replenishments`, `consignment_pickups`, `inventory_returns` tables and supporting columns.
+  - Admin panel `ConsignacionesPanel` to create, edit, replenish, pickup, reactivate, and view history per client.
+  - API routes: `POST /api/consignaciones` (create/update), `POST /api/consignaciones/reponer` (weekly replenishment), `POST /api/consignaciones/recoger` (pickup with shortage charge), `POST /api/consignaciones/reactivar` (reopen closed client preserving history).
+  - FIFO batch traceability per client per variant (`computeClientBatchOutstanding`) so returns at pickup credit the correct production batch.
+  - Initial deliveries record `consignment` sales with amount=0 (stock in transit, no revenue). Replenishments charge based on units delivered. Pickups charge shortages at the per-client unit price.
+  - Dashboard card "Stock en consignación" shows the production cost currently held by establishments (`consignmentStockCogs`), computed server-side from outstanding × unit cost per client.
+  - Sales registry shows pickup events as $0 virtual rows alongside real sales, with explicit labels for entrega inicial / reposición / cobro faltantes.
+  - Test seed `scripts/seed-test-consignaciones.sql` for QA scenarios (multi-batch returns, historical clients, base amplification).
+
+### Changed
+
+- Cost of goods in the global ledger is now computed as `investment − stockOnHand − consignmentStockCogs`, robust to `inventory_returns` (units returned to stock no longer double-count as COGS).
+- `resolveFifoCost` credits batches with `inventory_returns` so stock returned at pickup is available again for future FIFO consumption.
+- `calculateLedger` replaces simulated FIFO with deterministic arithmetic over real `sale_batch_consumptions` and `inventory_returns` records.
+
+### Fixed
+
+- Pre-flight stock validation on all consignment routes prevents partial states when the second variant lacks stock after the first has already consumed FIFO.
+- Retry-once + rollback wraps every critical DB step in the four consignment routes — if any link fails, created sales, replenishments, pickups, and returns are deleted.
+- Shortage charges at pickup now extract real FIFO cost oldest-first from the client's outstanding (instead of `cost_of_goods=0`), so margins reflect reality.
+- Shortage charge inserts use `quantity=faltantes` with `consumeStock=false` (was `quantity=0`, which violated the `CHECK (quantity > 0)` constraint and silently dropped the pickup).
+- Replenishment base no longer drops below the previous base when delivering fewer units than the current base.
+- Closed clients (`base=0`) hide Editar/Reponer/Recoger and show Historial/Reactivar instead, preserving their `client_id` and full history.
+- Outstanding calculation switched from `sum(deliveries) − sum(returns)` to `totalDelivered − currentBase`, fixing inflated outstanding when the base is amplified and naturally handling multi-batch returns.
+
 ## [0.9.0] - 2026-05-09
 
 ### Changed
