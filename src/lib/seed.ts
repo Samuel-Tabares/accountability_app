@@ -28,5 +28,7 @@ export const blankState: AppState = {
   consignmentClients: [],
   consignmentReplenishments: [],
   consignmentPickups: [],
-  inventoryReturns: []
+  inventoryReturns: [],
+  saleBatchConsumptions: [],
+  consignmentStockCogs: 0
 };

@@ -4,6 +4,7 @@ import { requireAuthContext } from "@/src/lib/auth";
 import { pricingRowsToSettings } from "@/src/lib/pricing";
 import { blankState } from "@/src/lib/seed";
 import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
+import { computeAllClientsStockCogs } from "@/src/lib/consignment-traceability";
 import type {
   ConsignmentClientRow,
   ConsignmentPickupRow,
@@ -15,6 +16,7 @@ import type {
   ProductionBatchItemRow,
   ProductionBatchRow,
   ProfileRow,
+  SaleBatchConsumptionRow,
   SaleRow
 } from "@/src/lib/supabase/types";
 import type {
@@ -27,7 +29,8 @@ import type {
   Expense,
   InventoryReturn,
   ProductionBatch,
-  Sale
+  Sale,
+  SaleBatchConsumption
 } from "@/src/lib/types";
 
 type Props = {
@@ -204,6 +207,15 @@ function mapInventoryReturn(row: InventoryReturnRow): InventoryReturn {
   };
 }
 
+function mapSaleBatchConsumption(row: SaleBatchConsumptionRow): SaleBatchConsumption {
+  return {
+    saleId: row.sale_id,
+    batchId: row.batch_id,
+    units: Number(row.units),
+    cost: Number(row.cost)
+  };
+}
+
 export default async function AdminPage({ searchParams }: Props) {
   const auth = await requireAuthContext("admin");
   const params = await searchParams;
@@ -220,7 +232,8 @@ export default async function AdminPage({ searchParams }: Props) {
     consignmentClientsResult,
     consignmentReplenishmentsResult,
     consignmentPickupsResult,
-    inventoryReturnsResult
+    inventoryReturnsResult,
+    saleBatchConsumptionsResult
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("sales").select("*").order("created_at", { ascending: false }),
@@ -232,7 +245,8 @@ export default async function AdminPage({ searchParams }: Props) {
     supabase.from("consignment_clients").select("*").order("name", { ascending: true }),
     supabase.from("consignment_replenishments").select("*").order("created_at", { ascending: false }),
     supabase.from("consignment_pickups").select("*").order("created_at", { ascending: false }),
-    supabase.from("inventory_returns").select("*").order("created_at", { ascending: false })
+    supabase.from("inventory_returns").select("*").order("created_at", { ascending: false }),
+    supabase.from("sale_batch_consumptions").select("sale_id, batch_id, units, cost")
   ]);
 
   if (profilesResult.error || salesResult.error || expensesResult.error) {
@@ -250,7 +264,14 @@ export default async function AdminPage({ searchParams }: Props) {
   const consignmentReplenishmentsRows = (consignmentReplenishmentsResult.data ?? []) as ConsignmentReplenishmentRow[];
   const consignmentPickupsRows = (consignmentPickupsResult.data ?? []) as ConsignmentPickupRow[];
   const inventoryReturnsRows = (inventoryReturnsResult.data ?? []) as InventoryReturnRow[];
+  const saleBatchConsumptionsRows = (saleBatchConsumptionsResult.data ?? []) as SaleBatchConsumptionRow[];
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+
+  const consignmentStockCogs = await computeAllClientsStockCogs(
+    supabase,
+    consignmentClientsRows,
+    batches
+  );
   const itemsByBatch = new Map<string, ProductionBatchItemRow[]>();
   for (const item of batchItems) {
     itemsByBatch.set(item.batch_id, [...(itemsByBatch.get(item.batch_id) ?? []), item]);
@@ -269,7 +290,9 @@ export default async function AdminPage({ searchParams }: Props) {
     consignmentClients: consignmentClientsRows.map(mapConsignmentClient),
     consignmentReplenishments: consignmentReplenishmentsRows.map(mapConsignmentReplenishment),
     consignmentPickups: consignmentPickupsRows.map(mapConsignmentPickup),
-    inventoryReturns: inventoryReturnsRows.map(mapInventoryReturn)
+    inventoryReturns: inventoryReturnsRows.map(mapInventoryReturn),
+    saleBatchConsumptions: saleBatchConsumptionsRows.map(mapSaleBatchConsumption),
+    consignmentStockCogs
   };
 
   return (

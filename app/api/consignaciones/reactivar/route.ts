@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRouteRole } from "@/src/lib/route-auth";
 import { jsonResponse, wantsJson } from "@/src/lib/api-utils";
 import { computeNextReplenishmentDate } from "@/src/lib/consignment-utils";
-import { createConsignmentSale } from "@/src/lib/consignment-sale";
+import { createConsignmentSale, retryOnce, validateStockAvailable } from "@/src/lib/consignment-sale";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -48,29 +48,64 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  const priceWithNum = priceWithAlcohol ? parseFloat(priceWithAlcohol) : null;
-  const priceWithoutNum = priceWithoutAlcohol ? parseFloat(priceWithoutAlcohol) : null;
+  // Bug 8: pre-validar stock disponible antes de consumir nada.
+  const stockError = await validateStockAvailable(auth.adminClient, [
+    { variant: "withAlcohol", quantity: unitsWithAlcohol },
+    { variant: "withoutAlcohol", quantity: unitsWithoutAlcohol }
+  ]);
+  if (stockError) {
+    if (jsonMode) return jsonResponse(false, stockError, 400);
+    return response;
+  }
+
+  const parsePrice = (raw: string | null): number | null | "invalid" => {
+    if (!raw) return null;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) return "invalid";
+    return n;
+  };
+  const priceWithParsed = parsePrice(priceWithAlcohol);
+  const priceWithoutParsed = parsePrice(priceWithoutAlcohol);
+  if (priceWithParsed === "invalid" || priceWithoutParsed === "invalid") {
+    if (jsonMode) return jsonResponse(false, "Precios deben ser números mayores que 0", 400);
+    return response;
+  }
+  const priceWithNum = priceWithParsed;
+  const priceWithoutNum = priceWithoutParsed;
   const nextReplenishmentDate = computeNextReplenishmentDate(new Date());
 
-  const saleWith = await createConsignmentSale(
-    auth.adminClient,
-    auth.userId,
-    "withAlcohol",
-    unitsWithAlcohol,
-    0,
-    { clientId }
+  const saleWith = await retryOnce(
+    () =>
+      createConsignmentSale(auth.adminClient, auth.userId, "withAlcohol", unitsWithAlcohol, 0, {
+        clientId
+      }),
+    (r) => !r.error
   );
-  const saleWithout = await createConsignmentSale(
-    auth.adminClient,
-    auth.userId,
-    "withoutAlcohol",
-    unitsWithoutAlcohol,
-    0,
-    { clientId }
-  );
+  const saleWithout = saleWith.error
+    ? { saleId: null, error: null }
+    : await retryOnce(
+        () =>
+          createConsignmentSale(
+            auth.adminClient,
+            auth.userId,
+            "withoutAlcohol",
+            unitsWithoutAlcohol,
+            0,
+            { clientId }
+          ),
+        (r) => !r.error
+      );
 
   if (saleWith.error || saleWithout.error) {
-    if (jsonMode) return jsonResponse(false, "Error al registrar la entrega inicial (FIFO)", 500);
+    if (saleWith.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWith.saleId);
+    }
+    if (saleWithout.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWithout.saleId);
+    }
+    const msg =
+      saleWith.error ?? saleWithout.error ?? "La acción no se completó. Vuelve a intentarla.";
+    if (jsonMode) return jsonResponse(false, msg, 400);
     return response;
   }
 
@@ -83,13 +118,21 @@ export async function POST(request: NextRequest) {
     ...(priceWithoutNum !== null ? { price_without_alcohol: priceWithoutNum } : {})
   };
 
-  const { error: updateError } = await auth.adminClient
-    .from("consignment_clients")
-    .update(updatePayload)
-    .eq("id", clientId);
+  const updateResult = await retryOnce(
+    () => auth.adminClient.from("consignment_clients").update(updatePayload).eq("id", clientId),
+    (r) => !r.error
+  );
 
-  if (updateError) {
-    if (jsonMode) return jsonResponse(false, "Error al reactivar cliente", 500);
+  if (updateResult.error) {
+    // Rollback: las sales ya consumieron FIFO. Borrarlas evita stock fantasma.
+    if (saleWith.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWith.saleId);
+    }
+    if (saleWithout.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWithout.saleId);
+    }
+    if (jsonMode)
+      return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
     return response;
   }
 

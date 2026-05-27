@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRouteRole } from "@/src/lib/route-auth";
 import { jsonResponse, wantsJson } from "@/src/lib/api-utils";
 import { computeNextReplenishmentDate } from "@/src/lib/consignment-utils";
-import { createConsignmentSale } from "@/src/lib/consignment-sale";
+import { createConsignmentSale, retryOnce, validateStockAvailable } from "@/src/lib/consignment-sale";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -32,8 +32,20 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  const priceWithNum = priceWithAlcohol ? parseFloat(priceWithAlcohol) : null;
-  const priceWithoutNum = priceWithoutAlcohol ? parseFloat(priceWithoutAlcohol) : null;
+  const parsePrice = (raw: string | null): number | null | "invalid" => {
+    if (!raw) return null;
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) return "invalid";
+    return n;
+  };
+  const priceWithParsed = parsePrice(priceWithAlcohol);
+  const priceWithoutParsed = parsePrice(priceWithoutAlcohol);
+  if (priceWithParsed === "invalid" || priceWithoutParsed === "invalid") {
+    if (jsonMode) return jsonResponse(false, "Precios deben ser números mayores que 0", 400);
+    return response;
+  }
+  const priceWithNum = priceWithParsed;
+  const priceWithoutNum = priceWithoutParsed;
 
   if (isUpdate) {
     const updatePayload = {
@@ -65,6 +77,16 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
+  // Bug 8: pre-validar stock disponible antes de crear cliente y consumir nada.
+  const stockError = await validateStockAvailable(auth.adminClient, [
+    { variant: "withAlcohol", quantity: initialUnitsWithAlcohol },
+    { variant: "withoutAlcohol", quantity: initialUnitsWithoutAlcohol }
+  ]);
+  if (stockError) {
+    if (jsonMode) return jsonResponse(false, stockError, 400);
+    return response;
+  }
+
   const now = new Date();
   const nextReplenishmentDate = computeNextReplenishmentDate(now);
 
@@ -93,26 +115,45 @@ export async function POST(request: NextRequest) {
 
   const clientInsertedId = inserted.id as string;
 
-  const saleWith = await createConsignmentSale(
-    auth.adminClient,
-    auth.userId,
-    "withAlcohol",
-    initialUnitsWithAlcohol,
-    0,
-    { clientId: clientInsertedId }
+  const saleWith = await retryOnce(
+    () =>
+      createConsignmentSale(
+        auth.adminClient,
+        auth.userId,
+        "withAlcohol",
+        initialUnitsWithAlcohol,
+        0,
+        { clientId: clientInsertedId }
+      ),
+    (r) => !r.error
   );
-  const saleWithout = await createConsignmentSale(
-    auth.adminClient,
-    auth.userId,
-    "withoutAlcohol",
-    initialUnitsWithoutAlcohol,
-    0,
-    { clientId: clientInsertedId }
-  );
+  const saleWithout = saleWith.error
+    ? { saleId: null, error: null }
+    : await retryOnce(
+        () =>
+          createConsignmentSale(
+            auth.adminClient,
+            auth.userId,
+            "withoutAlcohol",
+            initialUnitsWithoutAlcohol,
+            0,
+            { clientId: clientInsertedId }
+          ),
+        (r) => !r.error
+      );
 
   if (saleWith.error || saleWithout.error) {
+    // Rollback: borrar sale huérfana (si la primera variante quedó creada) y cliente.
+    if (saleWith.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWith.saleId);
+    }
+    if (saleWithout.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWithout.saleId);
+    }
     await auth.adminClient.from("consignment_clients").delete().eq("id", clientInsertedId);
-    if (jsonMode) return jsonResponse(false, "Error al registrar la entrega inicial (FIFO)", 500);
+    const msg =
+      saleWith.error ?? saleWithout.error ?? "La acción no se completó. Vuelve a intentarla.";
+    if (jsonMode) return jsonResponse(false, msg, 400);
     return response;
   }
 

@@ -121,7 +121,9 @@ export function displayNumber(value: number) {
 }
 
 export function parseNumber(value: string) {
-  return value === "" ? 0 : Number(value);
+  if (value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
 export function saleRealTotal(sale: Pick<Sale, "priceTotal" | "wholesaleNetTotal">) {

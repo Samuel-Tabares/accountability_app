@@ -14,13 +14,14 @@ export async function resolveFifoCost(
     return { totalCost: 0, rows: [] };
   }
 
-  const [batchesResult, consumptionsResult] = await Promise.all([
+  const [batchesResult, consumptionsResult, returnsResult] = await Promise.all([
     adminClient
       .from("production_batches")
       .select("*")
       .eq("variant", variant)
       .order("created_at", { ascending: true }),
-    adminClient.from("sale_batch_consumptions").select("batch_id, units")
+    adminClient.from("sale_batch_consumptions").select("batch_id, units"),
+    adminClient.from("inventory_returns").select("batch_id, units")
   ]);
 
   const batches = (batchesResult.data ?? []) as ProductionBatchRow[];
@@ -31,6 +32,16 @@ export async function resolveFifoCost(
     consumedByBatch.set(batchId, (consumedByBatch.get(batchId) ?? 0) + Number(row.units));
   }
 
+  // Crédito por devoluciones al stock (recogidas de consignación).
+  // Sin esto, un lote que recibió returns sigue marcado como consumido y FIFO
+  // salta a lotes más nuevos/caros, además de bloquear validaciones de stock.
+  const returnedByBatch = new Map<string, number>();
+  for (const row of returnsResult.data ?? []) {
+    const batchId = row.batch_id;
+    if (!batchId) continue;
+    returnedByBatch.set(batchId, (returnedByBatch.get(batchId) ?? 0) + Number(row.units));
+  }
+
   let remaining = units;
   let totalCost = 0;
   const rows: FifoRow[] = [];
@@ -38,7 +49,8 @@ export async function resolveFifoCost(
   for (const batch of batches) {
     if (remaining <= 0) break;
     const alreadyConsumed = consumedByBatch.get(batch.id) ?? 0;
-    const available = Math.max(0, batch.units_produced - alreadyConsumed);
+    const returned = returnedByBatch.get(batch.id) ?? 0;
+    const available = Math.max(0, batch.units_produced - alreadyConsumed + returned);
     if (available <= 0) continue;
 
     const take = Math.min(available, remaining);

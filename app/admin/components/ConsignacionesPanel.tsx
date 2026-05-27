@@ -271,6 +271,26 @@ export default function ConsignacionesPanel({
 
   async function saveClient() {
     const isEdit = mode.kind === "edit";
+    if (!clientDraft.name.trim() || !clientDraft.address.trim()) {
+      onMessage("Nombre y dirección son requeridos");
+      return;
+    }
+    if (!isEdit) {
+      const totalInitial =
+        clientDraft.initialUnitsWithAlcohol + clientDraft.initialUnitsWithoutAlcohol;
+      if (totalInitial < 1) {
+        onMessage("Debes entregar al menos 1 unidad para crear el cliente");
+        return;
+      }
+    }
+    if (clientDraft.priceWithAlcohol !== "" && parseNumber(clientDraft.priceWithAlcohol) <= 0) {
+      onMessage("El precio con alcohol debe ser mayor que 0");
+      return;
+    }
+    if (clientDraft.priceWithoutAlcohol !== "" && parseNumber(clientDraft.priceWithoutAlcohol) <= 0) {
+      onMessage("El precio sin alcohol debe ser mayor que 0");
+      return;
+    }
     try {
       await postForm("/api/consignaciones", {
         ...(isEdit ? { client_id: mode.clientId } : {}),
@@ -299,6 +319,12 @@ export default function ConsignacionesPanel({
 
   async function saveReplenishment() {
     if (mode.kind !== "reponer" || !currentEditingClient) return;
+    const totalDelivered =
+      reponerDraft.unitsDeliveredWithAlcohol + reponerDraft.unitsDeliveredWithoutAlcohol;
+    if (totalDelivered < 1) {
+      onMessage("Debes entregar al menos 1 unidad");
+      return;
+    }
     try {
       await postForm("/api/consignaciones/reponer", {
         client_id: currentEditingClient.id,
@@ -355,6 +381,14 @@ export default function ConsignacionesPanel({
     if (mode.kind !== "reactivar" || !currentEditingClient) return;
     if (reactivarDraft.unitsWithAlcohol === 0 && reactivarDraft.unitsWithoutAlcohol === 0) {
       onMessage("Debes entregar al menos una unidad");
+      return;
+    }
+    if (reactivarDraft.priceWithAlcohol !== "" && parseNumber(reactivarDraft.priceWithAlcohol) <= 0) {
+      onMessage("El precio con alcohol debe ser mayor que 0");
+      return;
+    }
+    if (reactivarDraft.priceWithoutAlcohol !== "" && parseNumber(reactivarDraft.priceWithoutAlcohol) <= 0) {
+      onMessage("El precio sin alcohol debe ser mayor que 0");
       return;
     }
     try {
@@ -565,6 +599,7 @@ export default function ConsignacionesPanel({
                         })
                       }
                       min={0}
+                      step={1}
                     />
                   </Field>
                   <Field label="Unidades sin alcohol a entregar hoy">
@@ -578,6 +613,7 @@ export default function ConsignacionesPanel({
                         })
                       }
                       min={0}
+                      step={1}
                     />
                   </Field>
                 </>
@@ -590,6 +626,8 @@ export default function ConsignacionesPanel({
                     setClientDraft({ ...clientDraft, priceWithAlcohol: e.currentTarget.value })
                   }
                   placeholder={defaultPriceWithAlcohol.toString()}
+                  min={1}
+                  step="any"
                 />
               </Field>
               <Field label={`Precio sin alcohol (default: $${defaultPriceWithoutAlcohol})`}>
@@ -600,6 +638,8 @@ export default function ConsignacionesPanel({
                     setClientDraft({ ...clientDraft, priceWithoutAlcohol: e.currentTarget.value })
                   }
                   placeholder={defaultPriceWithoutAlcohol.toString()}
+                  min={1}
+                  step="any"
                 />
               </Field>
               {nextReplenishmentPreview && (
@@ -837,6 +877,8 @@ export default function ConsignacionesPanel({
                     setReactivarDraft({ ...reactivarDraft, priceWithAlcohol: e.currentTarget.value })
                   }
                   placeholder={(currentEditingClient.priceWithAlcohol ?? defaultPriceWithAlcohol).toString()}
+                  min={1}
+                  step="any"
                 />
               </Field>
               <Field label={`Precio sin alcohol (anterior: $${currentEditingClient.priceWithoutAlcohol ?? defaultPriceWithoutAlcohol})`}>
@@ -847,6 +889,8 @@ export default function ConsignacionesPanel({
                     setReactivarDraft({ ...reactivarDraft, priceWithoutAlcohol: e.currentTarget.value })
                   }
                   placeholder={(currentEditingClient.priceWithoutAlcohol ?? defaultPriceWithoutAlcohol).toString()}
+                  min={1}
+                  step="any"
                 />
               </Field>
               <Field label="Notas">
@@ -997,13 +1041,17 @@ export default function ConsignacionesPanel({
                       <div>
                         <span>Próxima reposición</span>
                         <strong>
-                          {formatDateIso(client.nextReplenishmentDate)}
-                          {!isClosed && (
-                            <em
-                              style={{ marginLeft: "0.35rem", fontStyle: "normal", opacity: 0.7 }}
-                            >
-                              ({days >= 0 ? `en ${days}d` : `${Math.abs(days)}d atrás`})
-                            </em>
+                          {isClosed ? (
+                            "Cerrado"
+                          ) : (
+                            <>
+                              {formatDateIso(client.nextReplenishmentDate)}
+                              <em
+                                style={{ marginLeft: "0.35rem", fontStyle: "normal", opacity: 0.7 }}
+                              >
+                                ({days >= 0 ? `en ${days}d` : `${Math.abs(days)}d atrás`})
+                              </em>
+                            </>
                           )}
                         </strong>
                       </div>

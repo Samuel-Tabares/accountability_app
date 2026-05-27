@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRouteRole } from "@/src/lib/route-auth";
 import { jsonResponse, wantsJson } from "@/src/lib/api-utils";
-import { createConsignmentSale } from "@/src/lib/consignment-sale";
-import { computeClientBatchOutstanding } from "@/src/lib/consignment-traceability";
+import { createConsignmentSale, retryOnce } from "@/src/lib/consignment-sale";
+import {
+  computeClientBatchOutstanding,
+  extractCostFromOutstanding,
+  type BatchOutstanding
+} from "@/src/lib/consignment-traceability";
 import type { ConsignmentClientRow } from "@/src/lib/supabase/types";
 import type { ProductVariant } from "@/src/lib/types";
 
@@ -78,66 +82,120 @@ export async function POST(request: NextRequest) {
   const faltantesWith = baseWith - collectedWith;
   const faltantesWithout = baseWithout - collectedWithout;
 
+  // Bug 1: el cost_of_goods del cobro de faltantes debe reflejar los lotes
+  // de donde realmente salieron los granizados que el cliente vendió.
+  // Extraemos oldest-first del outstanding del cliente (asume que el cliente
+  // vende FIFO oldest-first, por lo que lo que vendió = lo más viejo).
+  // El outstanding se reusa más abajo para distribuir los returns de collected.
+  const outstandingWith = await computeClientBatchOutstanding(auth.adminClient, clientId, "withAlcohol");
+  const outstandingWithout = await computeClientBatchOutstanding(auth.adminClient, clientId, "withoutAlcohol");
+  const costFaltantesWith =
+    faltantesWith > 0
+      ? await extractCostFromOutstanding(auth.adminClient, outstandingWith, faltantesWith)
+      : { totalCost: 0, rows: [] };
+  const costFaltantesWithout =
+    faltantesWithout > 0
+      ? await extractCostFromOutstanding(auth.adminClient, outstandingWithout, faltantesWithout)
+      : { totalCost: 0, rows: [] };
+
   const saleWith =
     faltantesWith > 0
-      ? await createConsignmentSale(
-          auth.adminClient,
-          auth.userId,
-          "withAlcohol",
-          faltantesWith,
-          chargeWith,
-          { clientId, consumeStock: false }
+      ? await retryOnce(
+          () =>
+            createConsignmentSale(
+              auth.adminClient,
+              auth.userId,
+              "withAlcohol",
+              faltantesWith,
+              chargeWith,
+              {
+                clientId,
+                consumeStock: false,
+                precomputedCost: { totalCost: costFaltantesWith.totalCost }
+              }
+            ),
+          (r) => !r.error
         )
       : { saleId: null, error: null };
 
   const saleWithout =
-    faltantesWithout > 0
-      ? await createConsignmentSale(
-          auth.adminClient,
-          auth.userId,
-          "withoutAlcohol",
-          faltantesWithout,
-          chargeWithout,
-          { clientId, consumeStock: false }
+    faltantesWithout > 0 && !saleWith.error
+      ? await retryOnce(
+          () =>
+            createConsignmentSale(
+              auth.adminClient,
+              auth.userId,
+              "withoutAlcohol",
+              faltantesWithout,
+              chargeWithout,
+              {
+                clientId,
+                consumeStock: false,
+                precomputedCost: { totalCost: costFaltantesWithout.totalCost }
+              }
+            ),
+          (r) => !r.error
         )
       : { saleId: null, error: null };
 
+  const rollbackFaltantesSales = async () => {
+    if (saleWith.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWith.saleId);
+    }
+    if (saleWithout.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWithout.saleId);
+    }
+  };
+
   if (saleWith.error || saleWithout.error) {
-    if (jsonMode) return jsonResponse(false, "Error al cobrar la diferencia", 500);
+    await rollbackFaltantesSales();
+    if (jsonMode)
+      return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
     return response;
   }
 
   // Insertar pickup
-  const { data: pickupInsert, error: pickupErr } = await auth.adminClient
-    .from("consignment_pickups")
-    .insert({
-      created_by: auth.userId,
-      client_id: clientId,
-      units_collected_with_alcohol: collectedWith,
-      units_collected_without_alcohol: collectedWithout,
-      units_charged_with_alcohol: baseWith - collectedWith,
-      units_charged_without_alcohol: baseWithout - collectedWithout,
-      unit_price_with_alcohol: priceWith,
-      unit_price_without_alcohol: priceWithout,
-      amount_charged: amountCharged,
-      sale_id_with_alcohol: saleWith.saleId,
-      sale_id_without_alcohol: saleWithout.saleId,
-      notes: notes || null
-    })
-    .select("id")
-    .single();
+  const pickupResult = await retryOnce(
+    () =>
+      auth.adminClient
+        .from("consignment_pickups")
+        .insert({
+          created_by: auth.userId,
+          client_id: clientId,
+          units_collected_with_alcohol: collectedWith,
+          units_collected_without_alcohol: collectedWithout,
+          units_charged_with_alcohol: baseWith - collectedWith,
+          units_charged_without_alcohol: baseWithout - collectedWithout,
+          unit_price_with_alcohol: priceWith,
+          unit_price_without_alcohol: priceWithout,
+          amount_charged: amountCharged,
+          sale_id_with_alcohol: saleWith.saleId,
+          sale_id_without_alcohol: saleWithout.saleId,
+          notes: notes || null
+        })
+        .select("id")
+        .single(),
+    (r) => !r.error && !!r.data
+  );
 
-  if (pickupErr || !pickupInsert) {
-    if (jsonMode) return jsonResponse(false, "Error al registrar la recogida", 500);
+  if (pickupResult.error || !pickupResult.data) {
+    await rollbackFaltantesSales();
+    if (jsonMode)
+      return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
     return response;
   }
 
-  const pickupId = pickupInsert.id as string;
+  const pickupId = pickupResult.data.id as string;
 
-  // Atribuir unidades recogidas a lotes FIFO sobre el sub-inventario del cliente
+  // Atribuir unidades recogidas a lotes FIFO sobre el sub-inventario del cliente.
+  // Reusamos outstandingWith/outstandingWithout ya calculados arriba.
+  const outstandingByVariant: Record<ProductVariant, BatchOutstanding[]> = {
+    withAlcohol: outstandingWith,
+    withoutAlcohol: outstandingWithout
+  };
   for (const v of variants) {
     if (v.collected <= 0) continue;
-    const outstanding = await computeClientBatchOutstanding(auth.adminClient, clientId, v.variant);
+    const outstanding = outstandingByVariant[v.variant];
     const totalOutstanding = outstanding.reduce((s, o) => s + o.units, 0);
 
     // Si outstanding está vacío pero hay collected > 0, fallback: no hay trazabilidad
@@ -150,6 +208,7 @@ export async function POST(request: NextRequest) {
     if (v.collected > totalOutstanding) {
       // Inconsistencia: se recolecta más de lo disponible. Error.
       await auth.adminClient.from("consignment_pickups").delete().eq("id", pickupId);
+      await rollbackFaltantesSales();
       if (jsonMode)
         return jsonResponse(
           false,
@@ -168,11 +227,15 @@ export async function POST(request: NextRequest) {
       source_pickup_id: string;
       source_client_id: string;
     }> = [];
-    // IMPORTANTE: outstanding viene ordenado oldest-first.
-    // Lo que "queda" en el cliente son los lotes más nuevos (el cliente consumió FIFO oldest-first).
-    // Cuando devolvemos FIFO oldest-first del outstanding, devolvemos a los lotes correctos.
-    for (const out of outstanding) {
+    // Returns van newest-first: el cliente vende FIFO oldest-first, así que lo que
+    // queda físicamente en el local son los lotes más nuevos del outstanding. Al
+    // recoger, esas son las unidades que físicamente recibimos de vuelta.
+    // El cost de faltantes (más arriba) sí va oldest-first porque atribuye a lo
+    // que el cliente YA vendió. Ambos walks juntos cubren el outstanding completo
+    // por extremos opuestos sin solaparse.
+    for (let i = outstanding.length - 1; i >= 0; i--) {
       if (remaining <= 0) break;
+      const out = outstanding[i];
       const take = Math.min(out.units, remaining);
       returnRows.push({
         created_by: auth.userId,
@@ -186,26 +249,40 @@ export async function POST(request: NextRequest) {
     }
 
     if (returnRows.length > 0) {
-      const { error: retErr } = await auth.adminClient.from("inventory_returns").insert(returnRows);
-      if (retErr) {
+      const returnsResult = await retryOnce(
+        () => auth.adminClient.from("inventory_returns").insert(returnRows),
+        (r) => !r.error
+      );
+      if (returnsResult.error) {
         await auth.adminClient.from("consignment_pickups").delete().eq("id", pickupId);
-        if (jsonMode) return jsonResponse(false, "Error al devolver al stock", 500);
+        await rollbackFaltantesSales();
+        if (jsonMode)
+          return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
         return response;
       }
     }
   }
 
   // Cerrar al cliente: base = 0
-  const { error: updateErr } = await auth.adminClient
-    .from("consignment_clients")
-    .update({
-      base_quantity_with_alcohol: 0,
-      base_quantity_without_alcohol: 0
-    })
-    .eq("id", clientId);
+  const closeResult = await retryOnce(
+    () =>
+      auth.adminClient
+        .from("consignment_clients")
+        .update({
+          base_quantity_with_alcohol: 0,
+          base_quantity_without_alcohol: 0
+        })
+        .eq("id", clientId),
+    (r) => !r.error
+  );
 
-  if (updateErr) {
-    if (jsonMode) return jsonResponse(false, "Error al cerrar el cliente", 500);
+  if (closeResult.error) {
+    // Las returns ya cascadean si borramos el pickup, así que el rollback completo
+    // limpia pickup + returns + faltantes sales y deja al cliente sin cambios.
+    await auth.adminClient.from("consignment_pickups").delete().eq("id", pickupId);
+    await rollbackFaltantesSales();
+    if (jsonMode)
+      return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
     return response;
   }
 

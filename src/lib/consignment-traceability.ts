@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProductVariant } from "@/src/lib/types";
+import type { ConsignmentClientRow, ProductionBatchRow } from "@/src/lib/supabase/types";
 
 export type BatchOutstanding = {
   batchId: string;
@@ -131,4 +132,78 @@ export async function computeClientBatchOutstanding(
   }
 
   return outstanding;
+}
+
+// Extrae `units` unidades del outstanding oldest-first, devolviendo:
+// - rows: [{ batch_id, units, cost }] que suma a `units` total (o menos si no hay suficiente)
+// - totalCost: suma de costos
+// El unitCost por lote se calcula con production_batches.total_cost / units_produced.
+export async function extractCostFromOutstanding(
+  admin: SupabaseClient,
+  outstanding: BatchOutstanding[],
+  unitsToExtract: number
+): Promise<{ totalCost: number; rows: Array<{ batch_id: string; units: number; cost: number }> }> {
+  if (unitsToExtract <= 0 || outstanding.length === 0) {
+    return { totalCost: 0, rows: [] };
+  }
+
+  const batchIds = outstanding.map((o) => o.batchId);
+  const { data: batches } = await admin
+    .from("production_batches")
+    .select("id, units_produced, total_cost")
+    .in("id", batchIds);
+
+  const unitCostByBatch = new Map<string, number>();
+  for (const b of (batches ?? []) as ProductionBatchRow[]) {
+    const produced = b.units_produced || 1;
+    unitCostByBatch.set(b.id, Number(b.total_cost) / produced);
+  }
+
+  let remaining = unitsToExtract;
+  let totalCost = 0;
+  const rows: Array<{ batch_id: string; units: number; cost: number }> = [];
+  for (const out of outstanding) {
+    if (remaining <= 0) break;
+    const take = Math.min(out.units, remaining);
+    const unitCost = unitCostByBatch.get(out.batchId) ?? 0;
+    const cost = take * unitCost;
+    rows.push({ batch_id: out.batchId, units: take, cost });
+    totalCost += cost;
+    remaining -= take;
+  }
+  return { totalCost, rows };
+}
+
+// Suma el costo (FIFO unit cost por lote) del stock que ACTUALMENTE está
+// físicamente en clientes de consignación. Se usa server-side en admin/page.tsx
+// para poblar `consignmentStockCogs` en el estado del dashboard.
+export async function computeAllClientsStockCogs(
+  admin: SupabaseClient,
+  clients: ConsignmentClientRow[],
+  batches: ProductionBatchRow[]
+): Promise<number> {
+  const unitCostByBatch = new Map<string, number>();
+  for (const b of batches) {
+    const produced = b.units_produced || 1;
+    unitCostByBatch.set(b.id, Number(b.total_cost) / produced);
+  }
+
+  let total = 0;
+  const variants: ProductVariant[] = ["withAlcohol", "withoutAlcohol"];
+  for (const client of clients) {
+    const baseWith = client.base_quantity_with_alcohol;
+    const baseWithout = client.base_quantity_without_alcohol;
+    if (baseWith <= 0 && baseWithout <= 0) continue;
+
+    for (const variant of variants) {
+      const base = variant === "withAlcohol" ? baseWith : baseWithout;
+      if (base <= 0) continue;
+      const outstanding = await computeClientBatchOutstanding(admin, client.id, variant);
+      for (const out of outstanding) {
+        const unitCost = unitCostByBatch.get(out.batchId) ?? 0;
+        total += out.units * unitCost;
+      }
+    }
+  }
+  return total;
 }

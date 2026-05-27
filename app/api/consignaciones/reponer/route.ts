@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRouteRole } from "@/src/lib/route-auth";
 import { jsonResponse, wantsJson } from "@/src/lib/api-utils";
 import { computeNextReplenishmentDate } from "@/src/lib/consignment-utils";
-import { createConsignmentSale } from "@/src/lib/consignment-sale";
+import { createConsignmentSale, retryOnce, validateStockAvailable } from "@/src/lib/consignment-sale";
 import type { ConsignmentClientRow } from "@/src/lib/supabase/types";
 
 const DEFAULT_PRICE_WITH_ALCOHOL = 4900;
@@ -54,6 +54,16 @@ export async function POST(request: NextRequest) {
   const unitPriceWithAlcohol = clientData.price_with_alcohol ?? DEFAULT_PRICE_WITH_ALCOHOL;
   const unitPriceWithoutAlcohol = clientData.price_without_alcohol ?? DEFAULT_PRICE_WITHOUT_ALCOHOL;
 
+  // Bug 8: pre-validar stock antes de consumir nada.
+  const stockError = await validateStockAvailable(auth.adminClient, [
+    { variant: "withAlcohol", quantity: unitsDeliveredWith },
+    { variant: "withoutAlcohol", quantity: unitsDeliveredWithout }
+  ]);
+  if (stockError) {
+    if (jsonMode) return jsonResponse(false, stockError, 400);
+    return response;
+  }
+
   // FIFO consume exactamente lo que se entrega
   const unitsFromFIFOWith = unitsDeliveredWith;
   const unitsFromFIFOWithout = unitsDeliveredWithout;
@@ -67,62 +77,101 @@ export async function POST(request: NextRequest) {
   const resolvedBaseWithAlcohol = Math.max(unitsDeliveredWith, clientData.base_quantity_with_alcohol);
   const resolvedBaseWithoutAlcohol = Math.max(unitsDeliveredWithout, clientData.base_quantity_without_alcohol);
 
-  const saleWith = await createConsignmentSale(
-    auth.adminClient,
-    auth.userId,
-    "withAlcohol",
-    unitsFromFIFOWith,
-    amountWith,
-    { clientId }
+  const saleWith = await retryOnce(
+    () =>
+      createConsignmentSale(
+        auth.adminClient,
+        auth.userId,
+        "withAlcohol",
+        unitsFromFIFOWith,
+        amountWith,
+        { clientId }
+      ),
+    (r) => !r.error
   );
-  const saleWithout = await createConsignmentSale(
-    auth.adminClient,
-    auth.userId,
-    "withoutAlcohol",
-    unitsFromFIFOWithout,
-    amountWithout,
-    { clientId }
-  );
+  const saleWithout = saleWith.error
+    ? { saleId: null, error: null }
+    : await retryOnce(
+        () =>
+          createConsignmentSale(
+            auth.adminClient,
+            auth.userId,
+            "withoutAlcohol",
+            unitsFromFIFOWithout,
+            amountWithout,
+            { clientId }
+          ),
+        (r) => !r.error
+      );
+
+  const rollbackSales = async () => {
+    if (saleWith.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWith.saleId);
+    }
+    if (saleWithout.saleId) {
+      await auth.adminClient.from("sales").delete().eq("id", saleWithout.saleId);
+    }
+  };
 
   if (saleWith.error || saleWithout.error) {
-    if (jsonMode) return jsonResponse(false, "Error al registrar la venta de consignación (FIFO)", 500);
+    await rollbackSales();
+    const msg =
+      saleWith.error ?? saleWithout.error ?? "La acción no se completó. Vuelve a intentarla.";
+    if (jsonMode) return jsonResponse(false, msg, 400);
     return response;
   }
 
-  const { error: insertError } = await auth.adminClient
-    .from("consignment_replenishments")
-    .insert({
-      client_id: clientId,
-      created_by: auth.userId,
-      units_delivered_with_alcohol: unitsDeliveredWith,
-      units_delivered_without_alcohol: unitsDeliveredWithout,
-      unit_price_with_alcohol: unitPriceWithAlcohol,
-      unit_price_without_alcohol: unitPriceWithoutAlcohol,
-      amount_charged: amountCharged,
-      new_base_with_alcohol: resolvedBaseWithAlcohol,
-      new_base_without_alcohol: resolvedBaseWithoutAlcohol,
-      notes: notes || null,
-      sale_id_with_alcohol: saleWith.saleId,
-      sale_id_without_alcohol: saleWithout.saleId
-    });
+  const insertResult = await retryOnce(
+    () =>
+      auth.adminClient
+        .from("consignment_replenishments")
+        .insert({
+          client_id: clientId,
+          created_by: auth.userId,
+          units_delivered_with_alcohol: unitsDeliveredWith,
+          units_delivered_without_alcohol: unitsDeliveredWithout,
+          unit_price_with_alcohol: unitPriceWithAlcohol,
+          unit_price_without_alcohol: unitPriceWithoutAlcohol,
+          amount_charged: amountCharged,
+          new_base_with_alcohol: resolvedBaseWithAlcohol,
+          new_base_without_alcohol: resolvedBaseWithoutAlcohol,
+          notes: notes || null,
+          sale_id_with_alcohol: saleWith.saleId,
+          sale_id_without_alcohol: saleWithout.saleId
+        })
+        .select("id")
+        .single(),
+    (r) => !r.error
+  );
 
-  if (insertError) {
-    if (jsonMode) return jsonResponse(false, "Error al registrar reposición", 500);
+  if (insertResult.error || !insertResult.data) {
+    await rollbackSales();
+    if (jsonMode)
+      return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
     return response;
   }
+
+  const replenishmentId = insertResult.data.id as string;
 
   const nextReplenishmentDate = computeNextReplenishmentDate(new Date());
-  const { error: updateError } = await auth.adminClient
-    .from("consignment_clients")
-    .update({
-      base_quantity_with_alcohol: resolvedBaseWithAlcohol,
-      base_quantity_without_alcohol: resolvedBaseWithoutAlcohol,
-      next_replenishment_date: nextReplenishmentDate
-    })
-    .eq("id", clientId);
+  const updateResult = await retryOnce(
+    () =>
+      auth.adminClient
+        .from("consignment_clients")
+        .update({
+          base_quantity_with_alcohol: resolvedBaseWithAlcohol,
+          base_quantity_without_alcohol: resolvedBaseWithoutAlcohol,
+          next_replenishment_date: nextReplenishmentDate
+        })
+        .eq("id", clientId),
+    (r) => !r.error
+  );
 
-  if (updateError) {
-    if (jsonMode) return jsonResponse(false, "Error al actualizar cliente", 500);
+  if (updateResult.error) {
+    await auth.adminClient.from("consignment_replenishments").delete().eq("id", replenishmentId);
+    await rollbackSales();
+    if (jsonMode)
+      return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
     return response;
   }
 

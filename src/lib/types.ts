@@ -165,6 +165,13 @@ export type InventoryReturn = {
   notes?: string;
 };
 
+export type SaleBatchConsumption = {
+  saleId: string;
+  batchId: string | null;
+  units: number;
+  cost: number;
+};
+
 export type AppState = {
   users: User[];
   ambassadors: Ambassador[];
@@ -177,6 +184,8 @@ export type AppState = {
   consignmentReplenishments: ConsignmentReplenishment[];
   consignmentPickups: ConsignmentPickup[];
   inventoryReturns: InventoryReturn[];
+  saleBatchConsumptions: SaleBatchConsumption[];
+  consignmentStockCogs: number;
 };
 
 export type PricingSettings = {
@@ -220,6 +229,8 @@ export type SaleLedger = Sale & {
   resolvedVariant: ProductVariant;
   displayLabel: string;
   isConsignmentDelivery: boolean;
+  isReplenishment: boolean;
+  isPickupCharge: boolean;
 };
 
 export type CalculatedState = {
