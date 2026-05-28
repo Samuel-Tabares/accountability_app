@@ -1,14 +1,18 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { MapPin, Plus } from "lucide-react";
+import { FileText, MapPin, Plus } from "lucide-react";
 import { computeNextReplenishmentDate } from "@/src/lib/consignment-utils";
 import { formatCurrency } from "@/src/lib/ledger";
 import type {
+  AppState,
   ConsignmentClient,
   ConsignmentPickup,
   ConsignmentReplenishment
 } from "@/src/lib/types";
+import { listConsignmentInvoices } from "@/src/lib/invoice/builders";
+import { predictNextNumber } from "@/src/lib/invoice/numbering";
+import type { InvoiceData } from "@/src/lib/invoice/types";
 import {
   Button,
   Field,
@@ -19,6 +23,8 @@ import {
   parseNumber,
   postForm
 } from "./ui";
+import InvoiceSuccessModal from "./InvoiceSuccessModal";
+import InvoiceHistoryModal from "./InvoiceHistoryModal";
 
 type FormMode =
   | { kind: "create" }
@@ -93,9 +99,7 @@ const emptyReactivarDraft: ReactivarDraft = {
 };
 
 type ConsignacionesPanelProps = {
-  consignmentClients: ConsignmentClient[];
-  consignmentReplenishments: ConsignmentReplenishment[];
-  consignmentPickups: ConsignmentPickup[];
+  state: AppState;
   defaultPriceWithAlcohol: number;
   defaultPriceWithoutAlcohol: number;
   onRefresh: () => void;
@@ -194,20 +198,30 @@ function buildTimeline(
 }
 
 export default function ConsignacionesPanel({
-  consignmentClients,
-  consignmentReplenishments,
-  consignmentPickups,
+  state,
   defaultPriceWithAlcohol,
   defaultPriceWithoutAlcohol,
   onRefresh,
   onMessage
 }: ConsignacionesPanelProps) {
+  const consignmentClients = state.consignmentClients;
+  const consignmentReplenishments = state.consignmentReplenishments;
+  const consignmentPickups = state.consignmentPickups;
   const [mode, setMode] = useState<FormMode>({ kind: "create" });
   const [clientDraft, setClientDraft] = useState<ClientDraft>(emptyClientDraft);
   const [reponerDraft, setReponerDraft] = useState<ReponerDraft>(emptyReponerDraft);
   const [recogerDraft, setRecogerDraft] = useState<RecogerDraft>(emptyRecogerDraft);
   const [reactivarDraft, setReactivarDraft] = useState<ReactivarDraft>(emptyReactivarDraft);
   const [showHistorical, setShowHistorical] = useState(false);
+  const [successInvoice, setSuccessInvoice] = useState<InvoiceData | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const invoiceHistory = useMemo(() => listConsignmentInvoices(state), [state]);
+
+  function resolvePrice(raw: string, fallback: number) {
+    const parsed = parseNumber(raw);
+    return parsed > 0 ? parsed : fallback;
+  }
 
   const currentEditingClient =
     mode.kind === "edit" ||
@@ -291,6 +305,20 @@ export default function ConsignacionesPanel({
       onMessage("El precio sin alcohol debe ser mayor que 0");
       return;
     }
+    const createSnapshot = !isEdit
+      ? {
+          name: clientDraft.name.trim(),
+          address: clientDraft.address.trim(),
+          contactName: clientDraft.contactName.trim() || undefined,
+          phone: clientDraft.phone.trim() || undefined,
+          notes: clientDraft.notes.trim() || undefined,
+          unitsWithAlcohol: clientDraft.initialUnitsWithAlcohol,
+          unitsWithoutAlcohol: clientDraft.initialUnitsWithoutAlcohol,
+          priceWithAlcohol: resolvePrice(clientDraft.priceWithAlcohol, defaultPriceWithAlcohol),
+          priceWithoutAlcohol: resolvePrice(clientDraft.priceWithoutAlcohol, defaultPriceWithoutAlcohol)
+        }
+      : null;
+
     try {
       await postForm("/api/consignaciones", {
         ...(isEdit ? { client_id: mode.clientId } : {}),
@@ -308,7 +336,27 @@ export default function ConsignacionesPanel({
         price_with_alcohol: clientDraft.priceWithAlcohol || undefined,
         price_without_alcohol: clientDraft.priceWithoutAlcohol || undefined
       });
-      onMessage(isEdit ? "Cliente actualizado" : "Cliente creado");
+
+      if (createSnapshot) {
+        setSuccessInvoice({
+          kind: "consignment_initial",
+          number: predictNextNumber("consignment_initial", consignmentClients.length),
+          createdAt: new Date().toISOString(),
+          client: {
+            name: createSnapshot.name,
+            address: createSnapshot.address,
+            contactName: createSnapshot.contactName,
+            phone: createSnapshot.phone
+          },
+          unitsWithAlcohol: createSnapshot.unitsWithAlcohol,
+          unitsWithoutAlcohol: createSnapshot.unitsWithoutAlcohol,
+          priceWithAlcohol: createSnapshot.priceWithAlcohol,
+          priceWithoutAlcohol: createSnapshot.priceWithoutAlcohol,
+          notes: createSnapshot.notes
+        });
+      } else {
+        onMessage("Cliente actualizado");
+      }
       setMode({ kind: "create" });
       setClientDraft(emptyClientDraft);
       onRefresh();
@@ -325,6 +373,33 @@ export default function ConsignacionesPanel({
       onMessage("Debes entregar al menos 1 unidad");
       return;
     }
+    const client = currentEditingClient;
+    const priceWith = client.priceWithAlcohol ?? defaultPriceWithAlcohol;
+    const priceWithout = client.priceWithoutAlcohol ?? defaultPriceWithoutAlcohol;
+    const amount =
+      Math.min(reponerDraft.unitsDeliveredWithAlcohol, client.baseQuantityWithAlcohol) * priceWith +
+      Math.min(reponerDraft.unitsDeliveredWithoutAlcohol, client.baseQuantityWithoutAlcohol) *
+        priceWithout;
+    const newBaseWith = Math.max(
+      reponerDraft.unitsDeliveredWithAlcohol,
+      client.baseQuantityWithAlcohol
+    );
+    const newBaseWithout = Math.max(
+      reponerDraft.unitsDeliveredWithoutAlcohol,
+      client.baseQuantityWithoutAlcohol
+    );
+    const snapshot = {
+      client,
+      unitsDeliveredWithAlcohol: reponerDraft.unitsDeliveredWithAlcohol,
+      unitsDeliveredWithoutAlcohol: reponerDraft.unitsDeliveredWithoutAlcohol,
+      priceWith,
+      priceWithout,
+      amount,
+      newBaseWith,
+      newBaseWithout,
+      notes: reponerDraft.notes.trim() || undefined
+    };
+
     try {
       await postForm("/api/consignaciones/reponer", {
         client_id: currentEditingClient.id,
@@ -332,7 +407,27 @@ export default function ConsignacionesPanel({
         units_delivered_without_alcohol: reponerDraft.unitsDeliveredWithoutAlcohol,
         notes: reponerDraft.notes.trim() || undefined
       });
-      onMessage("Reposición registrada");
+      setSuccessInvoice({
+        kind: "consignment_replenishment",
+        number: predictNextNumber("consignment_replenishment", consignmentReplenishments.length),
+        createdAt: new Date().toISOString(),
+        client: {
+          name: snapshot.client.name,
+          address: snapshot.client.address,
+          contactName: snapshot.client.contactName,
+          phone: snapshot.client.phone
+        },
+        unitsDeliveredWithAlcohol: snapshot.unitsDeliveredWithAlcohol,
+        unitsDeliveredWithoutAlcohol: snapshot.unitsDeliveredWithoutAlcohol,
+        unitPriceWithAlcohol: snapshot.priceWith,
+        unitPriceWithoutAlcohol: snapshot.priceWithout,
+        amountCharged: snapshot.amount,
+        newBaseWithAlcohol: snapshot.newBaseWith,
+        newBaseWithoutAlcohol: snapshot.newBaseWithout,
+        previousBaseWithAlcohol: snapshot.client.baseQuantityWithAlcohol,
+        previousBaseWithoutAlcohol: snapshot.client.baseQuantityWithoutAlcohol,
+        notes: snapshot.notes
+      });
       setMode({ kind: "create" });
       setReponerDraft(emptyReponerDraft);
       onRefresh();
@@ -361,6 +456,24 @@ export default function ConsignacionesPanel({
     );
     if (!ok) return;
 
+    const priceWith = currentEditingClient.priceWithAlcohol ?? defaultPriceWithAlcohol;
+    const priceWithout = currentEditingClient.priceWithoutAlcohol ?? defaultPriceWithoutAlcohol;
+    const chargedWith =
+      currentEditingClient.baseQuantityWithAlcohol - recogerDraft.unitsCollectedWithAlcohol;
+    const chargedWithout =
+      currentEditingClient.baseQuantityWithoutAlcohol - recogerDraft.unitsCollectedWithoutAlcohol;
+    const snapshot = {
+      client: currentEditingClient,
+      collectedWith: recogerDraft.unitsCollectedWithAlcohol,
+      collectedWithout: recogerDraft.unitsCollectedWithoutAlcohol,
+      chargedWith,
+      chargedWithout,
+      priceWith,
+      priceWithout,
+      amount: chargedWith * priceWith + chargedWithout * priceWithout,
+      notes: recogerDraft.notes.trim() || undefined
+    };
+
     try {
       await postForm("/api/consignaciones/recoger", {
         client_id: currentEditingClient.id,
@@ -368,7 +481,25 @@ export default function ConsignacionesPanel({
         units_collected_without_alcohol: recogerDraft.unitsCollectedWithoutAlcohol,
         notes: recogerDraft.notes.trim() || undefined
       });
-      onMessage("Recogida registrada");
+      setSuccessInvoice({
+        kind: "consignment_pickup",
+        number: predictNextNumber("consignment_pickup", consignmentPickups.length),
+        createdAt: new Date().toISOString(),
+        client: {
+          name: snapshot.client.name,
+          address: snapshot.client.address,
+          contactName: snapshot.client.contactName,
+          phone: snapshot.client.phone
+        },
+        unitsCollectedWithAlcohol: snapshot.collectedWith,
+        unitsCollectedWithoutAlcohol: snapshot.collectedWithout,
+        unitsChargedWithAlcohol: snapshot.chargedWith,
+        unitsChargedWithoutAlcohol: snapshot.chargedWithout,
+        unitPriceWithAlcohol: snapshot.priceWith,
+        unitPriceWithoutAlcohol: snapshot.priceWithout,
+        amountCharged: snapshot.amount,
+        notes: snapshot.notes
+      });
       setMode({ kind: "create" });
       setRecogerDraft(emptyRecogerDraft);
       onRefresh();
@@ -391,6 +522,23 @@ export default function ConsignacionesPanel({
       onMessage("El precio sin alcohol debe ser mayor que 0");
       return;
     }
+    const priceWith = resolvePrice(
+      reactivarDraft.priceWithAlcohol,
+      currentEditingClient.priceWithAlcohol ?? defaultPriceWithAlcohol
+    );
+    const priceWithout = resolvePrice(
+      reactivarDraft.priceWithoutAlcohol,
+      currentEditingClient.priceWithoutAlcohol ?? defaultPriceWithoutAlcohol
+    );
+    const snapshot = {
+      client: currentEditingClient,
+      unitsWith: reactivarDraft.unitsWithAlcohol,
+      unitsWithout: reactivarDraft.unitsWithoutAlcohol,
+      priceWith,
+      priceWithout,
+      notes: reactivarDraft.notes.trim() || undefined
+    };
+
     try {
       await postForm("/api/consignaciones/reactivar", {
         client_id: currentEditingClient.id,
@@ -400,7 +548,25 @@ export default function ConsignacionesPanel({
         price_without_alcohol: reactivarDraft.priceWithoutAlcohol || undefined,
         notes: reactivarDraft.notes.trim() || undefined
       });
-      onMessage("Cliente reactivado");
+      setSuccessInvoice({
+        kind: "consignment_reactivation",
+        number: predictNextNumber(
+          "consignment_reactivation",
+          state.consignmentReactivations.length
+        ),
+        createdAt: new Date().toISOString(),
+        client: {
+          name: snapshot.client.name,
+          address: snapshot.client.address,
+          contactName: snapshot.client.contactName,
+          phone: snapshot.client.phone
+        },
+        unitsWithAlcohol: snapshot.unitsWith,
+        unitsWithoutAlcohol: snapshot.unitsWithout,
+        unitPriceWithAlcohol: snapshot.priceWith,
+        unitPriceWithoutAlcohol: snapshot.priceWithout,
+        notes: snapshot.notes
+      });
       setMode({ kind: "create" });
       setReactivarDraft(emptyReactivarDraft);
       onRefresh();
@@ -547,6 +713,12 @@ export default function ConsignacionesPanel({
       eyebrow="Establecimientos y reposiciones"
       title="Consignaciones"
       description="cliente vende FIFO, yo recojo FIFO. Gestiona entregas sin cobro inmediato, reposiciones y recogidas."
+      action={
+        <Button variant="ghost" onClick={() => setHistoryOpen(true)} style={{ fontSize: "0.8rem" }}>
+          <FileText size={14} />
+          Facturas ({invoiceHistory.length})
+        </Button>
+      }
     >
       <div className="form-grid split">
         <div className="form-card">
@@ -1114,6 +1286,20 @@ export default function ConsignacionesPanel({
           </div>
         </div>
       </div>
+
+      <InvoiceSuccessModal
+        open={successInvoice !== null}
+        invoice={successInvoice}
+        companyInfo={state.companyInfo}
+        onClose={() => setSuccessInvoice(null)}
+      />
+      <InvoiceHistoryModal
+        open={historyOpen}
+        title="Facturas de consignaciones"
+        entries={invoiceHistory}
+        companyInfo={state.companyInfo}
+        onClose={() => setHistoryOpen(false)}
+      />
     </Section>
   );
 }

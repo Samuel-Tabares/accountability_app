@@ -1,6 +1,6 @@
 # TRABIX Granizados
 
-Version `0.8.2`
+Version `0.11.0`
 
 TRABIX is a Next.js + Supabase app with two protected experiences:
 
@@ -48,11 +48,7 @@ The Supabase project is configured for Postgres `17` in `supabase/config.toml`.
 npm run dev
 ```
 
-5. Bootstrap the local admin user for testing.
-
-```bash
-npm run seed:admin
-```
+5. Create the initial admin user in the Supabase Auth dashboard, then add a matching row in `public.profiles` with `role = 'admin'`.
 
 ## Docker
 
@@ -70,7 +66,6 @@ docker compose up --build
 - `SUPABASE_AUTH_ALIAS_DOMAIN`
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
-- `ALLOW_BOOTSTRAP_ADMIN`
 
 ## Abuse Protection
 
@@ -99,8 +94,6 @@ The production app runs on Vercel connected to Supabase Cloud and Upstash Cloud.
 | `UPSTASH_REDIS_REST_URL` | Upstash console → Redis database → REST API |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash console → Redis database → REST API |
 
-> Do **not** set `ALLOW_BOOTSTRAP_ADMIN` in production.
-
 5. Click **Deploy**. Subsequent pushes to `main` redeploy automatically.
 
 ### Database migrations (production)
@@ -114,7 +107,7 @@ supabase/migrations/0003_operational_model.sql
 supabase/migrations/0004_net_sale_boost.sql
 ```
 
-After migrations, create the admin user via the Supabase Auth dashboard or the bootstrap script pointed at the production URL.
+After migrations, create the admin user via the Supabase Auth dashboard and insert the matching `profiles` row with `role = 'admin'`.
 
 ## Release And Traceability
 
@@ -129,11 +122,10 @@ After migrations, create the admin user via the Supabase Auth dashboard or the b
 - Supabase Auth owns the session.
 - The app also sets a small signed `trabix-session` HTTP-only cookie after login so server-rendered pages and dashboard APIs can reliably resolve the Supabase profile when the full Supabase Auth cookie is too large for local development.
 - `profiles` links app users to `auth.users`.
-- Embajadores are created only by the admin through the admin panel or the bootstrap script.
+- Embajadores are created only by the admin through the admin panel.
 - The admin panel creates embajadores with full name, code, and phone. The backend sets `username = código`, generates a temporary password, starts the profile at `nivel0`, and shows credentials only once.
 - Temporary passwords force `/cambiar-contrasena`; the permanent password must have at least 6 characters and one uppercase letter.
 - Admins can reset an embajador password from the dashboard. The new temporary password is shown once and forces another password change.
-- Admin bootstrap user `samuel / samuel123` can be created with `npm run seed:admin` in local development.
 - RLS enforces access at the database layer, so the frontend is not the source of truth for permissions.
 
 ## Data Model Notes

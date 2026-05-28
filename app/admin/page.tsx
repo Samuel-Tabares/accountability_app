@@ -6,8 +6,10 @@ import { blankState } from "@/src/lib/seed";
 import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
 import { computeAllClientsStockCogs } from "@/src/lib/consignment-traceability";
 import type {
+  CompanyInfoRow,
   ConsignmentClientRow,
   ConsignmentPickupRow,
+  ConsignmentReactivationRow,
   ConsignmentReplenishmentRow,
   ExpenseRow,
   InventoryReturnRow,
@@ -23,8 +25,10 @@ import type {
   Ambassador,
   AppState,
   BatchLineItem,
+  CompanyInfo,
   ConsignmentClient,
   ConsignmentPickup,
+  ConsignmentReactivation,
   ConsignmentReplenishment,
   Expense,
   InventoryReturn,
@@ -170,6 +174,8 @@ function mapConsignmentReplenishment(row: ConsignmentReplenishmentRow): Consignm
     amountCharged: Number(row.amount_charged),
     newBaseWithAlcohol: row.new_base_with_alcohol,
     newBaseWithoutAlcohol: row.new_base_without_alcohol,
+    previousBaseWithAlcohol: row.previous_base_with_alcohol ?? undefined,
+    previousBaseWithoutAlcohol: row.previous_base_without_alcohol ?? undefined,
     notes: row.notes ?? undefined,
     saleIdWithAlcohol: row.sale_id_with_alcohol ?? undefined,
     saleIdWithoutAlcohol: row.sale_id_without_alcohol ?? undefined
@@ -191,6 +197,42 @@ function mapConsignmentPickup(row: ConsignmentPickupRow): ConsignmentPickup {
     saleIdWithAlcohol: row.sale_id_with_alcohol ?? undefined,
     saleIdWithoutAlcohol: row.sale_id_without_alcohol ?? undefined,
     notes: row.notes ?? undefined
+  };
+}
+
+function mapConsignmentReactivation(row: ConsignmentReactivationRow): ConsignmentReactivation {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    clientId: row.client_id,
+    unitsWithAlcohol: row.units_with_alcohol,
+    unitsWithoutAlcohol: row.units_without_alcohol,
+    unitPriceWithAlcohol: Number(row.unit_price_with_alcohol),
+    unitPriceWithoutAlcohol: Number(row.unit_price_without_alcohol),
+    saleIdWithAlcohol: row.sale_id_with_alcohol ?? undefined,
+    saleIdWithoutAlcohol: row.sale_id_without_alcohol ?? undefined,
+    notes: row.notes ?? undefined
+  };
+}
+
+function mapCompanyInfo(row: CompanyInfoRow | null): CompanyInfo {
+  if (!row) {
+    return {
+      legalName: "TRABIX GRANIZADOS S.A.S.",
+      nit: "109,245,650-1",
+      address: "Armenia, Quindío - Colombia",
+      phone: "+57 304 353 5455",
+      taxStatus: "No responsable de IVA",
+      sanitaryRegistry: "RSA-0028762-2023"
+    };
+  }
+  return {
+    legalName: row.legal_name,
+    nit: row.nit,
+    address: row.address,
+    phone: row.phone,
+    taxStatus: row.tax_status,
+    sanitaryRegistry: row.sanitary_registry ?? undefined
   };
 }
 
@@ -232,8 +274,10 @@ export default async function AdminPage({ searchParams }: Props) {
     consignmentClientsResult,
     consignmentReplenishmentsResult,
     consignmentPickupsResult,
+    consignmentReactivationsResult,
     inventoryReturnsResult,
-    saleBatchConsumptionsResult
+    saleBatchConsumptionsResult,
+    companyInfoResult
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("sales").select("*").order("created_at", { ascending: false }),
@@ -245,8 +289,10 @@ export default async function AdminPage({ searchParams }: Props) {
     supabase.from("consignment_clients").select("*").order("name", { ascending: true }),
     supabase.from("consignment_replenishments").select("*").order("created_at", { ascending: false }),
     supabase.from("consignment_pickups").select("*").order("created_at", { ascending: false }),
+    supabase.from("consignment_reactivations").select("*").order("created_at", { ascending: false }),
     supabase.from("inventory_returns").select("*").order("created_at", { ascending: false }),
-    supabase.from("sale_batch_consumptions").select("sale_id, batch_id, units, cost")
+    supabase.from("sale_batch_consumptions").select("sale_id, batch_id, units, cost"),
+    supabase.from("company_info").select("*").eq("id", "singleton").maybeSingle()
   ]);
 
   if (profilesResult.error || salesResult.error || expensesResult.error) {
@@ -263,8 +309,10 @@ export default async function AdminPage({ searchParams }: Props) {
   const consignmentClientsRows = (consignmentClientsResult.data ?? []) as ConsignmentClientRow[];
   const consignmentReplenishmentsRows = (consignmentReplenishmentsResult.data ?? []) as ConsignmentReplenishmentRow[];
   const consignmentPickupsRows = (consignmentPickupsResult.data ?? []) as ConsignmentPickupRow[];
+  const consignmentReactivationsRows = (consignmentReactivationsResult.data ?? []) as ConsignmentReactivationRow[];
   const inventoryReturnsRows = (inventoryReturnsResult.data ?? []) as InventoryReturnRow[];
   const saleBatchConsumptionsRows = (saleBatchConsumptionsResult.data ?? []) as SaleBatchConsumptionRow[];
+  const companyInfoRow = (companyInfoResult.data ?? null) as CompanyInfoRow | null;
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
 
   const consignmentStockCogs = await computeAllClientsStockCogs(
@@ -290,9 +338,11 @@ export default async function AdminPage({ searchParams }: Props) {
     consignmentClients: consignmentClientsRows.map(mapConsignmentClient),
     consignmentReplenishments: consignmentReplenishmentsRows.map(mapConsignmentReplenishment),
     consignmentPickups: consignmentPickupsRows.map(mapConsignmentPickup),
+    consignmentReactivations: consignmentReactivationsRows.map(mapConsignmentReactivation),
     inventoryReturns: inventoryReturnsRows.map(mapInventoryReturn),
     saleBatchConsumptions: saleBatchConsumptionsRows.map(mapSaleBatchConsumption),
-    consignmentStockCogs
+    consignmentStockCogs,
+    companyInfo: mapCompanyInfo(companyInfoRow)
   };
 
   return (

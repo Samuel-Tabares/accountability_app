@@ -135,6 +135,8 @@ export async function POST(request: NextRequest) {
           amount_charged: amountCharged,
           new_base_with_alcohol: resolvedBaseWithAlcohol,
           new_base_without_alcohol: resolvedBaseWithoutAlcohol,
+          previous_base_with_alcohol: clientData.base_quantity_with_alcohol,
+          previous_base_without_alcohol: clientData.base_quantity_without_alcohol,
           notes: notes || null,
           sale_id_with_alcohol: saleWith.saleId,
           sale_id_without_alcohol: saleWithout.saleId

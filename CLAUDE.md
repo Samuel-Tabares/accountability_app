@@ -81,7 +81,6 @@ Wholesale sales auto-generate an `expense` record (type `commission`) linked via
 | `SUPABASE_AUTH_ALIAS_DOMAIN` | yes | e.g. `trabix.local` or `trabix.app` |
 | `UPSTASH_REDIS_REST_URL` | yes | Upstash REST endpoint |
 | `UPSTASH_REDIS_REST_TOKEN` | yes | Upstash auth token |
-| `ALLOW_BOOTSTRAP_ADMIN` | dev only | Set `true` to run `npm run seed:admin` |
 
 ## Database migrations
 

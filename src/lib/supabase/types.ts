@@ -35,6 +35,8 @@ export type ConsignmentReplenishmentRow = {
   amount_charged: number;
   new_base_with_alcohol: number;
   new_base_without_alcohol: number;
+  previous_base_with_alcohol: number | null;
+  previous_base_without_alcohol: number | null;
   notes: string | null;
   sale_id_with_alcohol: string | null;
   sale_id_without_alcohol: string | null;
@@ -67,6 +69,32 @@ export type InventoryReturnRow = {
   source_pickup_id: string | null;
   source_client_id: string | null;
   notes: string | null;
+};
+
+export type ConsignmentReactivationRow = {
+  id: string;
+  created_at: string;
+  created_by: string;
+  client_id: string;
+  units_with_alcohol: number;
+  units_without_alcohol: number;
+  unit_price_with_alcohol: number;
+  unit_price_without_alcohol: number;
+  sale_id_with_alcohol: string | null;
+  sale_id_without_alcohol: string | null;
+  notes: string | null;
+};
+
+export type CompanyInfoRow = {
+  id: "singleton";
+  legal_name: string;
+  nit: string;
+  address: string;
+  phone: string;
+  tax_status: string;
+  sanitary_registry: string | null;
+  updated_at: string;
+  updated_by: string | null;
 };
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];

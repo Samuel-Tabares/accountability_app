@@ -1,18 +1,64 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
-import type { AppState, PricingSettings, WholesaleTier } from "@/src/lib/types";
+import { CheckCircle2, Save } from "lucide-react";
+import type { AppState, CompanyInfo, PricingSettings, WholesaleTier } from "@/src/lib/types";
 import { Button, Field, Input, postForm, Section } from "./ui";
 
 type SettingsPanelProps = {
   initialSettings: AppState["settings"];
+  initialCompanyInfo: CompanyInfo;
   onRefresh: () => void;
   onMessage: (msg: string) => void;
 };
 
-export default function SettingsPanel({ initialSettings, onRefresh, onMessage }: SettingsPanelProps) {
+export default function SettingsPanel({
+  initialSettings,
+  initialCompanyInfo,
+  onRefresh,
+  onMessage
+}: SettingsPanelProps) {
   const [settings, setSettings] = useState<AppState["settings"]>(initialSettings);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(initialCompanyInfo);
+
+  function updateCompany<K extends keyof CompanyInfo>(key: K, value: CompanyInfo[K]) {
+    setCompanyInfo((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function saveCompanyInfo() {
+    if (!companyInfo.legalName.trim() || !companyInfo.nit.trim() || !companyInfo.address.trim() ||
+        !companyInfo.phone.trim() || !companyInfo.taxStatus.trim()) {
+      onMessage("Razón social, NIT, dirección, teléfono y estado tributario son obligatorios.");
+      return;
+    }
+    try {
+      const fd = new FormData();
+      fd.set("legal_name", companyInfo.legalName.trim());
+      fd.set("nit", companyInfo.nit.trim());
+      fd.set("address", companyInfo.address.trim());
+      fd.set("phone", companyInfo.phone.trim());
+      fd.set("tax_status", companyInfo.taxStatus.trim());
+      fd.set("sanitary_registry", (companyInfo.sanitaryRegistry ?? "").trim());
+      const response = await fetch("/api/company-info", {
+        method: "PUT",
+        body: fd,
+        credentials: "include",
+        headers: { Accept: "application/json" }
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          (payload && typeof payload === "object" && "message" in payload && typeof (payload as { message: unknown }).message === "string"
+            ? (payload as { message: string }).message
+            : "No se pudo actualizar los datos de empresa.")
+        );
+      }
+      onMessage("Datos de empresa actualizados.");
+      onRefresh();
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "No se pudo actualizar los datos de empresa.");
+    }
+  }
 
   function updateSettings<K extends keyof PricingSettings>(key: K, value: PricingSettings[K]) {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -63,6 +109,59 @@ export default function SettingsPanel({ initialSettings, onRefresh, onMessage }:
         </Button>
       }
     >
+      <div className="form-card" style={{ marginBottom: "1rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+          <h3 style={{ margin: 0 }}>Datos de la empresa (factura)</h3>
+          <Button onClick={saveCompanyInfo} variant="secondary">
+            <Save size={14} />
+            Guardar empresa
+          </Button>
+        </div>
+        <p className="section-description" style={{ marginTop: 0 }}>
+          Estos datos aparecen en el encabezado de cada factura PDF.
+        </p>
+        <div className="grid-2">
+          <Field label="Razón social">
+            <Input
+              value={companyInfo.legalName}
+              onChange={(e) => updateCompany("legalName", e.currentTarget.value)}
+            />
+          </Field>
+          <Field label="NIT">
+            <Input
+              value={companyInfo.nit}
+              onChange={(e) => updateCompany("nit", e.currentTarget.value)}
+            />
+          </Field>
+          <Field label="Dirección">
+            <Input
+              value={companyInfo.address}
+              onChange={(e) => updateCompany("address", e.currentTarget.value)}
+            />
+          </Field>
+          <Field label="Teléfono">
+            <Input
+              value={companyInfo.phone}
+              onChange={(e) => updateCompany("phone", e.currentTarget.value)}
+            />
+          </Field>
+          <Field label="Estado tributario">
+            <Input
+              value={companyInfo.taxStatus}
+              onChange={(e) => updateCompany("taxStatus", e.currentTarget.value)}
+              placeholder="Ej: No responsable de IVA"
+            />
+          </Field>
+          <Field label="Registro sanitario (opcional)">
+            <Input
+              value={companyInfo.sanitaryRegistry ?? ""}
+              onChange={(e) => updateCompany("sanitaryRegistry", e.currentTarget.value)}
+              placeholder="Ej: RSA-0028762-2023"
+            />
+          </Field>
+        </div>
+      </div>
+
       <div className="form-grid split">
         <div className="form-card">
           <h3>Precios base</h3>

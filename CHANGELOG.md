@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.11.0] - 2026-05-28
+
+### Added
+
+- **Sistema de facturación PDF** — cada venta al por mayor y cada acción de consignación (entrega inicial, reposición, recogida, reactivación) genera una factura descargable con branding Trabix.
+  - Supabase migrations `0008_company_info.sql` (datos legales de la empresa singleton + seed), `0009_consignment_reactivations.sql` (auditoría de reactivaciones para soportar facturas RA), `0010_replenishment_previous_base.sql` (base anterior por variante para diferenciar reposición vs ampliación en facturas).
+  - Lib `src/lib/invoice/` con tipos discriminados por kind, builders desde el state, numeración consecutiva on-demand por tipo (VM, EC, RC, RG, RA) y generador PDF con `jspdf` + `jspdf-autotable` (A5 vertical, logo Trabix circular).
+  - Componentes `InvoiceSuccessModal` (modal pequeño con número y descarga) e `InvoiceHistoryModal` (tabla scrolleable con filtros por tipo, Ver/Descargar PDF). Ambos renderizados vía `createPortal` a `document.body` para evitar el stacking context del panel.
+  - API `GET/PUT /api/company-info` para administrar los datos que aparecen en el header de cada factura.
+  - Sub-sección "Datos de la empresa (factura)" en el panel de Configuración.
+  - El endpoint `/api/consignaciones/reactivar` ahora también inserta en `consignment_reactivations` para historial auditable.
+  - El endpoint `/api/consignaciones/reponer` guarda `previous_base_with_alcohol/without_alcohol` para que la factura distinga lo cobrado por reposición de la ampliación de base sin cobro.
+  - Botón "Facturas (N)" en el header de los paneles de Ventas y Consignaciones para abrir el historial filtrado.
+  - Tabla "AMPLIACIÓN DE BASE" condicional en facturas de reposición, solo cuando el cliente recibe más unidades de las que tenía como base.
+
+### Changed
+
+- Wholesale invoice: el bloque "EMBAJADOR / nombre" se reemplazó por "Código de descuento (X%): CODE" que solo se muestra cuando hay descuento aplicado.
+- Layout de totales en PDF: helper `drawSummaryLine` con doble right-align y 32mm reservados para el value, eliminando el overlap entre el label y el monto cuando el label es largo (ej. "Descuento (12%):", "Cobrado por base anterior:").
+- Tabla DETALLES de reposición: cuando hay base anterior registrada, las filas se splittean en "reposición de base" (cobrada) por variante. La ampliación se muestra en una segunda tabla con `+N` y "Sin cobro".
+- `ConsignacionesPanel` ahora recibe `state: AppState` completo en lugar de campos individuales, simplificando el wiring.
+- `AppState` incluye `companyInfo` y `consignmentReactivations`; `app/admin/page.tsx` carga ambos en el `Promise.all` inicial.
+
+### Removed
+
+- `scripts/bootstrap-admin.mjs` y sus referencias (`seed:admin` / `seed:admin:prod` en `package.json`, `ALLOW_BOOTSTRAP_ADMIN` en `CLAUDE.md` y `README.md`, callouts y menciones del bootstrap script en `README.md`). En su reemplazo, el admin inicial se crea desde la Supabase Auth dashboard + insert manual en `public.profiles`.
+- Línea final "Nueva base: XA / YSA" de las facturas de reposición: solo aparece como tabla de ampliación cuando aplica.
+
+### Added (scripts)
+
+- `scripts/seed-lotes.sql` — SQL ejecutable en Supabase para limpiar lotes, ventas, consignaciones y gastos auto-generados, y sembrar 4 lotes (2 con licor a $1,000/u, 2 sin licor a $2,000/u, 100 uds c/u).
+
 ## [0.10.0] - 2026-05-27
 
 ### Added

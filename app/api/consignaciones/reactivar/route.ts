@@ -4,6 +4,9 @@ import { jsonResponse, wantsJson } from "@/src/lib/api-utils";
 import { computeNextReplenishmentDate } from "@/src/lib/consignment-utils";
 import { createConsignmentSale, retryOnce, validateStockAvailable } from "@/src/lib/consignment-sale";
 
+const DEFAULT_PRICE_WITH_ALCOHOL = 4900;
+const DEFAULT_PRICE_WITHOUT_ALCOHOL = 4800;
+
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const jsonMode = wantsJson(request);
@@ -134,6 +137,33 @@ export async function POST(request: NextRequest) {
     if (jsonMode)
       return jsonResponse(false, "La acción no se completó. Vuelve a intentarla.", 500);
     return response;
+  }
+
+  const effectivePriceWith = priceWithNum ?? DEFAULT_PRICE_WITH_ALCOHOL;
+  const effectivePriceWithout = priceWithoutNum ?? DEFAULT_PRICE_WITHOUT_ALCOHOL;
+  const { error: reactivationError } = await auth.adminClient
+    .from("consignment_reactivations")
+    .insert({
+      created_by: auth.userId,
+      client_id: clientId,
+      units_with_alcohol: unitsWithAlcohol,
+      units_without_alcohol: unitsWithoutAlcohol,
+      unit_price_with_alcohol: effectivePriceWith,
+      unit_price_without_alcohol: effectivePriceWithout,
+      sale_id_with_alcohol: saleWith.saleId,
+      sale_id_without_alcohol: saleWithout.saleId,
+      notes: notes || null
+    });
+
+  if (reactivationError) {
+    // El cliente quedó reactivado y las sales se mantienen; solo falló el log
+    // auditable. Reportar warning sin romper la operación principal.
+    if (jsonMode)
+      return jsonResponse(
+        true,
+        "Cliente reactivado (sin registro de factura RA). Reintenta para generar el log.",
+        201
+      );
   }
 
   if (jsonMode) return jsonResponse(true, "Cliente reactivado", 201);

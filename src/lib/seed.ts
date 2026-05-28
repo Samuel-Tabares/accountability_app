@@ -28,7 +28,16 @@ export const blankState: AppState = {
   consignmentClients: [],
   consignmentReplenishments: [],
   consignmentPickups: [],
+  consignmentReactivations: [],
   inventoryReturns: [],
   saleBatchConsumptions: [],
-  consignmentStockCogs: 0
+  consignmentStockCogs: 0,
+  companyInfo: {
+    legalName: "TRABIX GRANIZADOS S.A.S.",
+    nit: "109,245,650-1",
+    address: "Armenia, Quindío - Colombia",
+    phone: "+57 304 353 5455",
+    taxStatus: "No responsable de IVA",
+    sanitaryRegistry: "RSA-0028762-2023"
+  }
 };

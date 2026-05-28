@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowRight, FileText } from "lucide-react";
 import {
   formatCurrency,
   formatDate,
@@ -12,7 +12,12 @@ import {
   saleTypeLabel
 } from "@/src/lib/ledger";
 import type { Ambassador, AppState, CalculatedState, ProductVariant, SaleType } from "@/src/lib/types";
+import { listWholesaleInvoices } from "@/src/lib/invoice/builders";
+import { predictNextNumber } from "@/src/lib/invoice/numbering";
+import type { WholesaleInvoice } from "@/src/lib/invoice/types";
 import { Button, displayNumber, Field, Input, parseNumber, postForm, saleRealTotal, Section, Select, TextArea } from "./ui";
+import InvoiceSuccessModal from "./InvoiceSuccessModal";
+import InvoiceHistoryModal from "./InvoiceHistoryModal";
 
 const emptySale = {
   saleType: "unit" as SaleType,
@@ -82,6 +87,12 @@ type SalesPanelProps = {
 export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh, onMessage }: SalesPanelProps) {
   const [saleForm, setSaleForm] = useState(emptySale);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [successInvoice, setSuccessInvoice] = useState<WholesaleInvoice | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const wholesaleHistory = useMemo(
+    () => listWholesaleInvoices(state, state.ambassadors),
+    [state]
+  );
 
   const salePreviewPrice = saleTotalPrice(state.settings, saleForm.saleType, saleForm.quantity, saleForm.wholesaleVariant);
   const salePreviewAmbassador =
@@ -180,6 +191,18 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
       saleForm.note.trim()
     ].filter(Boolean);
 
+    // Snapshot wholesale form data BEFORE the request so we can build the invoice
+    // after success even though we clear the form on success.
+    const wholesaleSnapshot =
+      saleForm.saleType === "wholesale"
+        ? {
+            variant: saleForm.wholesaleVariant,
+            quantity: saleForm.quantity,
+            note: saleForm.note.trim(),
+            ambassador: ambassador
+          }
+        : null;
+
     try {
       await postForm("/api/sales", {
         sale_type: saleForm.saleType,
@@ -188,6 +211,39 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
         ambassador_profile_id: saleForm.saleType === "wholesale" ? ambassador?.id : undefined,
         note: noteParts.join(" | ")
       });
+
+      if (wholesaleSnapshot) {
+        const summary = saleWholesaleSummary(
+          state.settings,
+          wholesaleSnapshot.quantity,
+          wholesaleSnapshot.variant,
+          Boolean(wholesaleSnapshot.ambassador)
+        );
+        const unitPrice =
+          wholesaleSnapshot.quantity > 0 ? summary.grossTotal / wholesaleSnapshot.quantity : 0;
+        const currentCount = state.sales.filter((s) => s.saleType === "wholesale").length;
+        const invoice: WholesaleInvoice = {
+          kind: "wholesale",
+          number: predictNextNumber("wholesale", currentCount),
+          createdAt: new Date().toISOString(),
+          variant: wholesaleSnapshot.variant,
+          quantity: wholesaleSnapshot.quantity,
+          unitPrice,
+          grossTotal: summary.grossTotal,
+          discountPct: summary.discountPct,
+          discountValue: summary.discountAmount,
+          netTotal: summary.netTotal,
+          ambassador: wholesaleSnapshot.ambassador
+            ? {
+                name: wholesaleSnapshot.ambassador.name,
+                code: wholesaleSnapshot.ambassador.code
+              }
+            : undefined,
+          notes: wholesaleSnapshot.note || undefined
+        };
+        setSuccessInvoice(invoice);
+      }
+
       setSaleForm(emptySale);
       setEditingSaleId(null);
       onRefresh();
@@ -202,8 +258,12 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
       title="Registrar ventas"
       description="Usa un preset plano. La cantidad es editable por admin y el precio se calcula automáticamente."
       action={
-        <div className="section-head-metrics">
+        <div className="section-head-metrics" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <span className="chip">{ledger.totals.unitsSold} granizados vendidos</span>
+          <Button variant="ghost" onClick={() => setHistoryOpen(true)} style={{ fontSize: "0.8rem" }}>
+            <FileText size={14} />
+            Facturas ({wholesaleHistory.length})
+          </Button>
         </div>
       }
     >
@@ -376,6 +436,20 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
           </div>
         </div>
       </div>
+
+      <InvoiceSuccessModal
+        open={successInvoice !== null}
+        invoice={successInvoice}
+        companyInfo={state.companyInfo}
+        onClose={() => setSuccessInvoice(null)}
+      />
+      <InvoiceHistoryModal
+        open={historyOpen}
+        title="Facturas de ventas al por mayor"
+        entries={wholesaleHistory}
+        companyInfo={state.companyInfo}
+        onClose={() => setHistoryOpen(false)}
+      />
     </Section>
   );
 }

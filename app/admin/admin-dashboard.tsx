@@ -272,6 +272,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
         {panel === "settings" ? (
           <SettingsPanel
             initialSettings={state.settings}
+            initialCompanyInfo={state.companyInfo}
             onRefresh={refreshDashboard}
             onMessage={showMessage}
           />
@@ -279,9 +280,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
 
         {panel === "consignaciones" ? (
           <ConsignacionesPanel
-            consignmentClients={state.consignmentClients}
-            consignmentReplenishments={state.consignmentReplenishments}
-            consignmentPickups={state.consignmentPickups}
+            state={state}
             defaultPriceWithAlcohol={4900}
             defaultPriceWithoutAlcohol={4800}
             onRefresh={refreshDashboard}

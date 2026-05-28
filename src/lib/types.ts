@@ -133,6 +133,8 @@ export type ConsignmentReplenishment = {
   amountCharged: number;
   newBaseWithAlcohol: number;
   newBaseWithoutAlcohol: number;
+  previousBaseWithAlcohol?: number;
+  previousBaseWithoutAlcohol?: number;
   notes?: string;
   saleIdWithAlcohol?: string;
   saleIdWithoutAlcohol?: string;
@@ -165,6 +167,28 @@ export type InventoryReturn = {
   notes?: string;
 };
 
+export type ConsignmentReactivation = {
+  id: string;
+  createdAt: string;
+  clientId: string;
+  unitsWithAlcohol: number;
+  unitsWithoutAlcohol: number;
+  unitPriceWithAlcohol: number;
+  unitPriceWithoutAlcohol: number;
+  saleIdWithAlcohol?: string;
+  saleIdWithoutAlcohol?: string;
+  notes?: string;
+};
+
+export type CompanyInfo = {
+  legalName: string;
+  nit: string;
+  address: string;
+  phone: string;
+  taxStatus: string;
+  sanitaryRegistry?: string;
+};
+
 export type SaleBatchConsumption = {
   saleId: string;
   batchId: string | null;
@@ -183,9 +207,11 @@ export type AppState = {
   consignmentClients: ConsignmentClient[];
   consignmentReplenishments: ConsignmentReplenishment[];
   consignmentPickups: ConsignmentPickup[];
+  consignmentReactivations: ConsignmentReactivation[];
   inventoryReturns: InventoryReturn[];
   saleBatchConsumptions: SaleBatchConsumption[];
   consignmentStockCogs: number;
+  companyInfo: CompanyInfo;
 };
 
 export type PricingSettings = {
