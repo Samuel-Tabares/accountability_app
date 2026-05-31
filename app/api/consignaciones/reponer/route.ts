@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
           sale_id_with_alcohol: saleWith.saleId,
           sale_id_without_alcohol: saleWithout.saleId
         })
-        .select("id")
+        .select("*")
         .single(),
     (r) => !r.error
   );
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  const replenishmentId = insertResult.data.id as string;
+  const replenishmentId = (insertResult.data as Record<string, unknown>).id as string;
 
   const nextReplenishmentDate = computeNextReplenishmentDate(new Date());
   const updateResult = await retryOnce(
@@ -177,6 +177,27 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  if (jsonMode) return jsonResponse(true, "Reposición registrada", 201);
+  if (jsonMode) {
+    const saleIds = [saleWith.saleId, saleWithout.saleId].filter(Boolean) as string[];
+    const [{ data: salesData }, { data: consumptionsData }] = await Promise.all([
+      saleIds.length > 0
+        ? auth.adminClient.from("sales").select("*").in("id", saleIds)
+        : Promise.resolve({ data: [] as unknown[] }),
+      saleIds.length > 0
+        ? auth.adminClient.from("sale_batch_consumptions").select("*").in("sale_id", saleIds)
+        : Promise.resolve({ data: [] as unknown[] })
+    ]);
+    return jsonResponse(true, "Reposición registrada", 201, {
+      replenishment: insertResult.data,
+      clientUpdate: {
+        id: clientId,
+        baseWithAlcohol: resolvedBaseWithAlcohol,
+        baseWithoutAlcohol: resolvedBaseWithoutAlcohol,
+        nextReplenishmentDate
+      },
+      sales: salesData ?? [],
+      consumptions: consumptionsData ?? []
+    });
+  }
   return response;
 }
