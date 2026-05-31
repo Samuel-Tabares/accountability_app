@@ -79,6 +79,10 @@ export async function POST(request: NextRequest) {
   const wholesaleVariant = String(formData.get("wholesale_variant") ?? "withAlcohol") as "withAlcohol" | "withoutAlcohol";
   const note = String(formData.get("note") ?? "").trim() || null;
   const ambassadorProfileIdRaw = String(formData.get("ambassador_profile_id") ?? "").trim();
+  const clientName = String(formData.get("client_name") ?? "").trim() || null;
+  const clientAddress = String(formData.get("client_address") ?? "").trim() || null;
+  const clientPhone = String(formData.get("client_phone") ?? "").trim() || null;
+  const deliveryFee = Math.max(0, Number(formData.get("delivery_fee") ?? 0));
 
   if (
     !["unit", "promo", "gift", "singleNoAlcohol", "giftNoAlcohol", "wholesale"].includes(saleType) ||
@@ -161,9 +165,13 @@ export async function POST(request: NextRequest) {
       cost_of_goods: fifo.totalCost,
       gross_profit: grossProfit,
       net_profit: netProfit,
-      margin
+      margin,
+      client_name: saleType === "wholesale" ? clientName : null,
+      client_address: saleType === "wholesale" ? clientAddress : null,
+      client_phone: saleType === "wholesale" ? clientPhone : null,
+      delivery_fee: saleType === "wholesale" ? deliveryFee : 0
     })
-    .select("id, created_at, sale_type, quantity, amount, note, ambassador_profile_id, wholesale_variant, pricing_version_id, price_total, wholesale_discount_pct, wholesale_discount_value, wholesale_net_total, wholesale_base_commission_pct, wholesale_boost_bonus_pct, commission_rate, commission_value, cost_of_goods, gross_profit, net_profit, margin, consignment_client_id")
+    .select("id, created_at, sale_type, quantity, amount, note, ambassador_profile_id, wholesale_variant, pricing_version_id, price_total, wholesale_discount_pct, wholesale_discount_value, wholesale_net_total, wholesale_base_commission_pct, wholesale_boost_bonus_pct, commission_rate, commission_value, cost_of_goods, gross_profit, net_profit, margin, consignment_client_id, client_name, client_address, client_phone, delivery_fee")
     .single();
 
   if (error || !sale) {

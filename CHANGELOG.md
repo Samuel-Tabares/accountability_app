@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.14.0] - 2026-05-31
+
+### Added
+
+- **Campos de cliente y domicilio en ventas al por mayor** — el formulario de venta al por mayor ahora incluye: nombre del cliente/negocio, dirección de entrega, teléfono y precio de domicilio (todos opcionales).
+  - El domicilio aparece como línea separada en el resumen previo del formulario y en el TOTAL de la factura PDF.
+  - La factura PDF muestra un bloque CLIENTE (nombre, teléfono, dirección) antes de los detalles del producto, si hay datos de cliente.
+  - El historial de facturas muestra el nombre del cliente en el `subject` de cada entrada.
+  - Migración `0011_wholesale_client_fields.sql`: agrega `client_name`, `client_address`, `client_phone`, `delivery_fee` a la tabla `sales`.
+
 ## [0.13.0] - 2026-05-30
 
 ### Performance

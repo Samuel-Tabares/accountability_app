@@ -88,6 +88,10 @@ export type Sale = {
   discountExpenseId?: string;
   commissionExpenseId?: string;
   consignmentClientId?: string;
+  clientName?: string;
+  clientAddress?: string;
+  clientPhone?: string;
+  deliveryFee?: number;
   note: string;
 };
 

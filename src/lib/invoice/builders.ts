@@ -68,6 +68,10 @@ export function buildWholesaleInvoice(
     ambassador: ambassador
       ? { name: ambassador.name, code: ambassador.code }
       : undefined,
+    client: sale.clientName
+      ? { name: sale.clientName, address: sale.clientAddress, phone: sale.clientPhone }
+      : undefined,
+    deliveryFee: sale.deliveryFee && sale.deliveryFee > 0 ? sale.deliveryFee : undefined,
     notes: sale.note?.trim() || undefined
   };
 }
@@ -175,16 +179,18 @@ export function listWholesaleInvoices(
   return wholesales
     .map((sale) => {
       const invoice = buildWholesaleInvoice(sale, state, ambassadors);
+      const subjectParts: string[] = [];
+      if (invoice.client) subjectParts.push(invoice.client.name);
+      if (invoice.ambassador) subjectParts.push(`${invoice.ambassador.name} (${invoice.ambassador.code})`);
+      if (subjectParts.length === 0) subjectParts.push("Sin cliente");
       return {
         key: `wholesale-${sale.id}`,
         kind: "wholesale" as const,
         number: invoice.number,
         createdAt: sale.createdAt,
-        subject: invoice.ambassador
-          ? `${invoice.ambassador.name} (${invoice.ambassador.code})`
-          : "Sin embajador",
+        subject: subjectParts.join(" · "),
         subjectMeta: `${sale.quantity} uds · ${sale.wholesaleVariant === "withAlcohol" ? "con licor" : "sin licor"}`,
-        total: invoice.netTotal,
+        total: invoice.netTotal + (invoice.deliveryFee ?? 0),
         invoice
       };
     })

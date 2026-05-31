@@ -132,18 +132,37 @@ function drawTitleBlock(ctx: PageContext, data: InvoiceData) {
 
 function drawClientBlock(ctx: PageContext, data: InvoiceData) {
   if (data.kind === "wholesale") {
-    if (!data.ambassador || data.discountPct <= 0) return;
     const { doc, margin } = ctx;
-    const pct = (data.discountPct * 100).toFixed(0);
-    const labelText = `Código de descuento (${pct}%): `;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(labelText, margin, ctx.cursorY);
-    const labelWidth = doc.getTextWidth(labelText);
-    doc.setFont("helvetica", "bold");
-    doc.text(data.ambassador.code, margin + labelWidth, ctx.cursorY);
-    doc.setFont("helvetica", "normal");
-    ctx.cursorY += 6;
+    if (data.client) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.text("CLIENTE", margin, ctx.cursorY);
+      ctx.cursorY += 4.5;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Nombre:    ${data.client.name}`, margin, ctx.cursorY);
+      ctx.cursorY += 4;
+      if (data.client.phone) {
+        doc.text(`Teléfono:  ${data.client.phone}`, margin, ctx.cursorY);
+        ctx.cursorY += 4;
+      }
+      if (data.client.address) {
+        doc.text(`Dirección: ${data.client.address}`, margin, ctx.cursorY);
+        ctx.cursorY += 4;
+      }
+      ctx.cursorY += 2;
+    }
+    if (data.ambassador && data.discountPct > 0) {
+      const pct = (data.discountPct * 100).toFixed(0);
+      const labelText = `Código de descuento (${pct}%): `;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(labelText, margin, ctx.cursorY);
+      const labelWidth = doc.getTextWidth(labelText);
+      doc.setFont("helvetica", "bold");
+      doc.text(data.ambassador.code, margin + labelWidth, ctx.cursorY);
+      doc.setFont("helvetica", "normal");
+      ctx.cursorY += 6;
+    }
     return;
   }
 
@@ -370,9 +389,13 @@ function drawTotals(ctx: PageContext, data: InvoiceData) {
         `-${formatCOP(data.discountValue)}`
       );
     }
+    if (data.deliveryFee && data.deliveryFee > 0) {
+      drawSummaryLine(ctx, "Domicilio:", formatCOP(data.deliveryFee));
+    }
     drawSummaryLine(ctx, "IVA:", formatCOP(0));
     ctx.cursorY += 1.5;
-    drawSummaryLine(ctx, "TOTAL:", formatCOP(data.netTotal), { bold: true, fontSize: 12 });
+    const grandTotal = data.netTotal + (data.deliveryFee ?? 0);
+    drawSummaryLine(ctx, "TOTAL:", formatCOP(grandTotal), { bold: true, fontSize: 12 });
     return;
   }
 

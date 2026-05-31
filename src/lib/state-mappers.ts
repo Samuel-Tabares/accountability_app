@@ -34,6 +34,10 @@ export function mapApiSale(row: AnyRow, ambassadors: AmbassadorLike[] = []): Sal
     margin: Number(row.margin ?? 0),
     pricingVersionId: row.pricing_version_id ? String(row.pricing_version_id) : undefined,
     consignmentClientId: row.consignment_client_id ? String(row.consignment_client_id) : undefined,
+    clientName: row.client_name ? String(row.client_name) : undefined,
+    clientAddress: row.client_address ? String(row.client_address) : undefined,
+    clientPhone: row.client_phone ? String(row.client_phone) : undefined,
+    deliveryFee: row.delivery_fee != null ? Number(row.delivery_fee) : undefined,
     note: String(row.note ?? "")
   };
 }

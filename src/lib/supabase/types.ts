@@ -153,6 +153,10 @@ export type Database = {
           net_profit: number | null;
           margin: number;
           consignment_client_id: string | null;
+          client_name: string | null;
+          client_address: string | null;
+          client_phone: string | null;
+          delivery_fee: number;
         };
         Insert: Partial<Database["public"]["Tables"]["sales"]["Row"]> & {
           created_by: string;

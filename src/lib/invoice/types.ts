@@ -26,6 +26,8 @@ export type WholesaleInvoice = {
   discountValue: number;
   netTotal: number;
   ambassador?: { name: string; code: string };
+  client?: { name: string; address?: string; phone?: string };
+  deliveryFee?: number;
   notes?: string;
 };
 

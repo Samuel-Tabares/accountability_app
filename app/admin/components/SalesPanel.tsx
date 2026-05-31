@@ -25,7 +25,11 @@ const emptySale = {
   quantity: 0,
   wholesaleVariant: "withAlcohol" as ProductVariant,
   ambassadorCode: "",
-  note: ""
+  note: "",
+  clientName: "",
+  clientAddress: "",
+  clientPhone: "",
+  deliveryFee: 0
 };
 
 function salePreset(saleType: SaleType) {
@@ -173,7 +177,11 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onStateUp
           saleType: nextType,
           ...preset,
           ambassadorCode: nextType === "wholesale" ? prev.ambassadorCode : "",
-          note: nextType === "wholesale" ? prev.note : ""
+          note: nextType === "wholesale" ? prev.note : "",
+          clientName: nextType === "wholesale" ? prev.clientName : "",
+          clientAddress: nextType === "wholesale" ? prev.clientAddress : "",
+          clientPhone: nextType === "wholesale" ? prev.clientPhone : "",
+          deliveryFee: nextType === "wholesale" ? prev.deliveryFee : 0
         };
       }
       return { ...prev, [field]: value };
@@ -200,7 +208,11 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onStateUp
             variant: saleForm.wholesaleVariant,
             quantity: saleForm.quantity,
             note: saleForm.note.trim(),
-            ambassador: ambassador
+            ambassador: ambassador,
+            clientName: saleForm.clientName.trim(),
+            clientAddress: saleForm.clientAddress.trim(),
+            clientPhone: saleForm.clientPhone.trim(),
+            deliveryFee: saleForm.deliveryFee
           }
         : null;
 
@@ -210,7 +222,11 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onStateUp
         quantity: saleForm.quantity,
         wholesale_variant: saleForm.wholesaleVariant,
         ambassador_profile_id: saleForm.saleType === "wholesale" ? ambassador?.id : undefined,
-        note: noteParts.join(" | ")
+        note: noteParts.join(" | "),
+        client_name: saleForm.saleType === "wholesale" ? saleForm.clientName.trim() : undefined,
+        client_address: saleForm.saleType === "wholesale" ? saleForm.clientAddress.trim() : undefined,
+        client_phone: saleForm.saleType === "wholesale" ? saleForm.clientPhone.trim() : undefined,
+        delivery_fee: saleForm.saleType === "wholesale" ? saleForm.deliveryFee : undefined
       });
 
       if (wholesaleSnapshot) {
@@ -240,6 +256,14 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onStateUp
                 code: wholesaleSnapshot.ambassador.code
               }
             : undefined,
+          client: wholesaleSnapshot.clientName
+            ? {
+                name: wholesaleSnapshot.clientName,
+                address: wholesaleSnapshot.clientAddress || undefined,
+                phone: wholesaleSnapshot.clientPhone || undefined
+              }
+            : undefined,
+          deliveryFee: wholesaleSnapshot.deliveryFee > 0 ? wholesaleSnapshot.deliveryFee : undefined,
           notes: wholesaleSnapshot.note || undefined
         };
         setSuccessInvoice(invoice);
@@ -343,6 +367,43 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onStateUp
                   </Select>
                 </Field>
               </div>
+              <div className="grid-2">
+                <Field label="Nombre del cliente / negocio">
+                  <Input
+                    type="text"
+                    placeholder="Tienda Lupita, Juan García…"
+                    value={saleForm.clientName}
+                    onChange={(event) => updateSaleForm("clientName", event.target.value)}
+                  />
+                </Field>
+                <Field label="Teléfono">
+                  <Input
+                    type="text"
+                    placeholder="+57 300 123 4567"
+                    value={saleForm.clientPhone}
+                    onChange={(event) => updateSaleForm("clientPhone", event.target.value)}
+                  />
+                </Field>
+              </div>
+              <div className="grid-2">
+                <Field label="Dirección de entrega">
+                  <Input
+                    type="text"
+                    placeholder="Calle 45 # 12-34"
+                    value={saleForm.clientAddress}
+                    onChange={(event) => updateSaleForm("clientAddress", event.target.value)}
+                  />
+                </Field>
+                <Field label="Domicilio ($)">
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    value={displayNumber(saleForm.deliveryFee)}
+                    onChange={(event) => updateSaleForm("deliveryFee", parseNumber(event.target.value))}
+                  />
+                </Field>
+              </div>
               {salePreviewWholesale ? (
                 <div className="mini-grid" style={{ marginBottom: "1rem" }}>
                   <div className="mini-box">
@@ -350,8 +411,12 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onStateUp
                     <strong>{formatCurrency(salePreviewWholesale.discountAmount)}</strong>
                   </div>
                   <div className="mini-box">
+                    <span>Domicilio</span>
+                    <strong>{formatCurrency(saleForm.deliveryFee)}</strong>
+                  </div>
+                  <div className="mini-box">
                     <span>Cobro neto</span>
-                    <strong>{formatCurrency(salePreviewWholesale.netTotal)}</strong>
+                    <strong>{formatCurrency(salePreviewWholesale.netTotal + saleForm.deliveryFee)}</strong>
                   </div>
                 </div>
               ) : null}
