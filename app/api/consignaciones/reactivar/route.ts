@@ -141,7 +141,27 @@ export async function POST(request: NextRequest) {
 
   const effectivePriceWith = priceWithNum ?? DEFAULT_PRICE_WITH_ALCOHOL;
   const effectivePriceWithout = priceWithoutNum ?? DEFAULT_PRICE_WITHOUT_ALCOHOL;
-  const { error: reactivationError } = await auth.adminClient
+
+  const saleIds = [saleWith.saleId, saleWithout.saleId].filter(Boolean) as string[];
+  const [{ data: salesData }, { data: consumptionsData }] = await Promise.all([
+    saleIds.length > 0
+      ? auth.adminClient.from("sales").select("*").in("id", saleIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+    saleIds.length > 0
+      ? auth.adminClient.from("sale_batch_consumptions").select("*").in("sale_id", saleIds)
+      : Promise.resolve({ data: [] as unknown[] })
+  ]);
+
+  const clientUpdateForResponse = {
+    id: clientId,
+    baseWithAlcohol: unitsWithAlcohol,
+    baseWithoutAlcohol: unitsWithoutAlcohol,
+    nextReplenishmentDate,
+    priceWithAlcohol: priceWithNum,
+    priceWithoutAlcohol: priceWithoutNum
+  };
+
+  const { data: reactivationData, error: reactivationError } = await auth.adminClient
     .from("consignment_reactivations")
     .insert({
       created_by: auth.userId,
@@ -153,7 +173,9 @@ export async function POST(request: NextRequest) {
       sale_id_with_alcohol: saleWith.saleId,
       sale_id_without_alcohol: saleWithout.saleId,
       notes: notes || null
-    });
+    })
+    .select("*")
+    .single();
 
   if (reactivationError) {
     // El cliente quedó reactivado y las sales se mantienen; solo falló el log
@@ -162,10 +184,16 @@ export async function POST(request: NextRequest) {
       return jsonResponse(
         true,
         "Cliente reactivado (sin registro de factura RA). Reintenta para generar el log.",
-        201
+        201,
+        { reactivation: null, clientUpdate: clientUpdateForResponse, sales: salesData ?? [], consumptions: consumptionsData ?? [] }
       );
   }
 
-  if (jsonMode) return jsonResponse(true, "Cliente reactivado", 201);
+  if (jsonMode) return jsonResponse(true, "Cliente reactivado", 201, {
+    reactivation: reactivationData,
+    clientUpdate: clientUpdateForResponse,
+    sales: salesData ?? [],
+    consumptions: consumptionsData ?? []
+  });
   return response;
 }

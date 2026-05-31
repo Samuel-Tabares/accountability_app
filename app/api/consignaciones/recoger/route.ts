@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
           sale_id_without_alcohol: saleWithout.saleId,
           notes: notes || null
         })
-        .select("id")
+        .select("*")
         .single(),
     (r) => !r.error && !!r.data
   );
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  const pickupId = pickupResult.data.id as string;
+  const pickupId = (pickupResult.data as Record<string, unknown>).id as string;
 
   // Atribuir unidades recogidas a lotes FIFO sobre el sub-inventario del cliente.
   // Reusamos outstandingWith/outstandingWithout ya calculados arriba.
@@ -286,6 +286,20 @@ export async function POST(request: NextRequest) {
     return response;
   }
 
-  if (jsonMode) return jsonResponse(true, "Recogida registrada", 201);
+  if (jsonMode) {
+    const saleIds = [saleWith.saleId, saleWithout.saleId].filter(Boolean) as string[];
+    const [{ data: salesData }, { data: returnsData }] = await Promise.all([
+      saleIds.length > 0
+        ? auth.adminClient.from("sales").select("*").in("id", saleIds)
+        : Promise.resolve({ data: [] as unknown[] }),
+      auth.adminClient.from("inventory_returns").select("*").eq("source_pickup_id", pickupId)
+    ]);
+    return jsonResponse(true, "Recogida registrada", 201, {
+      pickup: pickupResult.data,
+      clientId,
+      sales: salesData ?? [],
+      inventoryReturns: returnsData ?? []
+    });
+  }
   return response;
 }

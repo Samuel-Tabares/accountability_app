@@ -68,7 +68,16 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    if (jsonMode) return jsonResponse(true, "Cliente actualizado", 200);
+    if (jsonMode) return jsonResponse(true, "Cliente actualizado", 200, {
+      clientId,
+      name,
+      address,
+      contactName: contactName || null,
+      phone: phone || null,
+      notes: notes || null,
+      priceWithAlcohol: priceWithNum,
+      priceWithoutAlcohol: priceWithoutNum
+    });
     return response;
   }
 
@@ -105,7 +114,7 @@ export async function POST(request: NextRequest) {
       price_without_alcohol: priceWithoutNum,
       next_replenishment_date: nextReplenishmentDate
     })
-    .select("id")
+    .select("*")
     .single();
 
   if (error || !inserted) {
@@ -167,6 +176,22 @@ export async function POST(request: NextRequest) {
       .eq("id", clientInsertedId);
   }
 
-  if (jsonMode) return jsonResponse(true, "Cliente creado", 201);
+  if (jsonMode) {
+    const saleIds = [saleWith.saleId, saleWithout.saleId].filter(Boolean) as string[];
+    const [{ data: fullClient }, { data: salesData }, { data: consumptionsData }] = await Promise.all([
+      auth.adminClient.from("consignment_clients").select("*").eq("id", clientInsertedId).single(),
+      saleIds.length > 0
+        ? auth.adminClient.from("sales").select("*").in("id", saleIds)
+        : Promise.resolve({ data: [] as unknown[] }),
+      saleIds.length > 0
+        ? auth.adminClient.from("sale_batch_consumptions").select("*").in("sale_id", saleIds)
+        : Promise.resolve({ data: [] as unknown[] })
+    ]);
+    return jsonResponse(true, "Cliente creado", 201, {
+      client: fullClient,
+      sales: salesData ?? [],
+      consumptions: consumptionsData ?? []
+    });
+  }
   return response;
 }

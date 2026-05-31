@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.0] - 2026-05-30
+
+### Performance
+
+- **`ConsignacionesPanel` sin `router.refresh()`** — crear cliente, editar, reponer, recoger y reactivar ahora actualizan el estado React local directamente desde la respuesta JSON, completando la migración iniciada en 0.12.0.
+  - Rutas `/api/consignaciones`, `/api/consignaciones/reponer`, `/api/consignaciones/recoger` y `/api/consignaciones/reactivar` devuelven los registros creados (`client`, `replenishment`, `pickup`, `reactivation`, `sales`, `consumptions`, `inventoryReturns`) y los campos actualizados del cliente (`clientUpdate`).
+  - Nuevos mappers en `src/lib/state-mappers.ts`: `mapApiConsignmentClient`, `mapApiConsignmentReplenishment`, `mapApiConsignmentPickup`, `mapApiConsignmentReactivation`, `mapApiInventoryReturn`.
+  - `ConsignacionesPanel` migrado de `onRefresh` a `onStateUpdate` — ahora consistente con todos los demás paneles.
+
+### Known limitations
+
+- La métrica "Stock en consignación" (hero del dashboard) se actualiza solo al recargar la página completa porque su cálculo es server-side (N+1 queries). No cambia entre mutaciones de consignación en la sesión actual.
+
 ## [0.12.0] - 2026-05-30
 
 ### Performance

@@ -287,7 +287,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             state={state}
             defaultPriceWithAlcohol={4900}
             defaultPriceWithoutAlcohol={4800}
-            onRefresh={refreshDashboard}
+            onStateUpdate={handleStateUpdate}
             onMessage={showMessage}
           />
         ) : null}

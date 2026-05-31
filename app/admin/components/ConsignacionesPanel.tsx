@@ -14,6 +14,15 @@ import { listConsignmentInvoices } from "@/src/lib/invoice/builders";
 import { predictNextNumber } from "@/src/lib/invoice/numbering";
 import type { InvoiceData } from "@/src/lib/invoice/types";
 import {
+  mapApiConsignmentClient,
+  mapApiConsignmentPickup,
+  mapApiConsignmentReactivation,
+  mapApiConsignmentReplenishment,
+  mapApiInventoryReturn,
+  mapApiSale,
+  mapApiSaleBatchConsumption
+} from "@/src/lib/state-mappers";
+import {
   Button,
   Field,
   Input,
@@ -102,7 +111,7 @@ type ConsignacionesPanelProps = {
   state: AppState;
   defaultPriceWithAlcohol: number;
   defaultPriceWithoutAlcohol: number;
-  onRefresh: () => void;
+  onStateUpdate: (updater: (prev: AppState) => AppState) => void;
   onMessage: (msg: string) => void;
 };
 
@@ -201,7 +210,7 @@ export default function ConsignacionesPanel({
   state,
   defaultPriceWithAlcohol,
   defaultPriceWithoutAlcohol,
-  onRefresh,
+  onStateUpdate,
   onMessage
 }: ConsignacionesPanelProps) {
   const consignmentClients = state.consignmentClients;
@@ -319,7 +328,7 @@ export default function ConsignacionesPanel({
       : null;
 
     try {
-      await postForm("/api/consignaciones", {
+      const payload = await postForm("/api/consignaciones", {
         ...(isEdit ? { client_id: mode.clientId } : {}),
         name: clientDraft.name.trim(),
         address: clientDraft.address.trim(),
@@ -335,6 +344,41 @@ export default function ConsignacionesPanel({
         price_with_alcohol: clientDraft.priceWithAlcohol || undefined,
         price_without_alcohol: clientDraft.priceWithoutAlcohol || undefined
       });
+
+      const p = payload as Record<string, unknown>;
+
+      if (isEdit) {
+        if (p && p.clientId) {
+          onStateUpdate((prev) => ({
+            ...prev,
+            consignmentClients: prev.consignmentClients.map((c) =>
+              c.id === p.clientId
+                ? {
+                    ...c,
+                    name: String(p.name),
+                    address: String(p.address),
+                    contactName: p.contactName ? String(p.contactName) : undefined,
+                    phone: p.phone ? String(p.phone) : undefined,
+                    notes: p.notes ? String(p.notes) : undefined,
+                    priceWithAlcohol: p.priceWithAlcohol != null ? Number(p.priceWithAlcohol) : undefined,
+                    priceWithoutAlcohol: p.priceWithoutAlcohol != null ? Number(p.priceWithoutAlcohol) : undefined
+                  }
+                : c
+            )
+          }));
+        }
+        onMessage("Cliente actualizado");
+      } else if (p && p.client) {
+        const newClient = mapApiConsignmentClient(p.client as Record<string, unknown>);
+        const newSales = ((p.sales as unknown[]) ?? []).map((r) => mapApiSale(r as Record<string, unknown>, state.ambassadors));
+        const newConsumptions = ((p.consumptions as unknown[]) ?? []).map((r) => mapApiSaleBatchConsumption(r as Record<string, unknown>));
+        onStateUpdate((prev) => ({
+          ...prev,
+          consignmentClients: [newClient, ...prev.consignmentClients],
+          sales: [...prev.sales, ...newSales],
+          saleBatchConsumptions: [...prev.saleBatchConsumptions, ...newConsumptions]
+        }));
+      }
 
       if (createSnapshot) {
         setSuccessInvoice({
@@ -353,12 +397,10 @@ export default function ConsignacionesPanel({
           priceWithoutAlcohol: createSnapshot.priceWithoutAlcohol,
           notes: createSnapshot.notes
         });
-      } else {
-        onMessage("Cliente actualizado");
       }
+
       setMode({ kind: "create" });
       setClientDraft(emptyClientDraft);
-      onRefresh();
     } catch {
       onMessage("Error al guardar cliente");
     }
@@ -400,12 +442,37 @@ export default function ConsignacionesPanel({
     };
 
     try {
-      await postForm("/api/consignaciones/reponer", {
+      const payload = await postForm("/api/consignaciones/reponer", {
         client_id: currentEditingClient.id,
         units_delivered_with_alcohol: reponerDraft.unitsDeliveredWithAlcohol,
         units_delivered_without_alcohol: reponerDraft.unitsDeliveredWithoutAlcohol,
         notes: reponerDraft.notes.trim() || undefined
       });
+
+      const p = payload as Record<string, unknown>;
+      if (p && p.replenishment) {
+        const newRep = mapApiConsignmentReplenishment(p.replenishment as Record<string, unknown>);
+        const cu = p.clientUpdate as Record<string, unknown>;
+        const newSales = ((p.sales as unknown[]) ?? []).map((r) => mapApiSale(r as Record<string, unknown>, state.ambassadors));
+        const newConsumptions = ((p.consumptions as unknown[]) ?? []).map((r) => mapApiSaleBatchConsumption(r as Record<string, unknown>));
+        onStateUpdate((prev) => ({
+          ...prev,
+          consignmentReplenishments: [newRep, ...prev.consignmentReplenishments],
+          consignmentClients: prev.consignmentClients.map((c) =>
+            c.id === cu.id
+              ? {
+                  ...c,
+                  baseQuantityWithAlcohol: Number(cu.baseWithAlcohol),
+                  baseQuantityWithoutAlcohol: Number(cu.baseWithoutAlcohol),
+                  nextReplenishmentDate: String(cu.nextReplenishmentDate)
+                }
+              : c
+          ),
+          sales: [...prev.sales, ...newSales],
+          saleBatchConsumptions: [...prev.saleBatchConsumptions, ...newConsumptions]
+        }));
+      }
+
       setSuccessInvoice({
         kind: "consignment_replenishment",
         number: predictNextNumber("consignment_replenishment", consignmentReplenishments.length),
@@ -429,7 +496,6 @@ export default function ConsignacionesPanel({
       });
       setMode({ kind: "create" });
       setReponerDraft(emptyReponerDraft);
-      onRefresh();
     } catch {
       onMessage("Error al registrar reposición");
     }
@@ -474,12 +540,32 @@ export default function ConsignacionesPanel({
     };
 
     try {
-      await postForm("/api/consignaciones/recoger", {
+      const payload = await postForm("/api/consignaciones/recoger", {
         client_id: currentEditingClient.id,
         units_collected_with_alcohol: recogerDraft.unitsCollectedWithAlcohol,
         units_collected_without_alcohol: recogerDraft.unitsCollectedWithoutAlcohol,
         notes: recogerDraft.notes.trim() || undefined
       });
+
+      const p = payload as Record<string, unknown>;
+      if (p && p.pickup) {
+        const newPickup = mapApiConsignmentPickup(p.pickup as Record<string, unknown>);
+        const pickedClientId = String(p.clientId);
+        const newSales = ((p.sales as unknown[]) ?? []).map((r) => mapApiSale(r as Record<string, unknown>, state.ambassadors));
+        const newReturns = ((p.inventoryReturns as unknown[]) ?? []).map((r) => mapApiInventoryReturn(r as Record<string, unknown>));
+        onStateUpdate((prev) => ({
+          ...prev,
+          consignmentPickups: [newPickup, ...prev.consignmentPickups],
+          consignmentClients: prev.consignmentClients.map((c) =>
+            c.id === pickedClientId
+              ? { ...c, baseQuantityWithAlcohol: 0, baseQuantityWithoutAlcohol: 0 }
+              : c
+          ),
+          sales: [...prev.sales, ...newSales],
+          inventoryReturns: [...prev.inventoryReturns, ...newReturns]
+        }));
+      }
+
       setSuccessInvoice({
         kind: "consignment_pickup",
         number: predictNextNumber("consignment_pickup", consignmentPickups.length),
@@ -501,7 +587,6 @@ export default function ConsignacionesPanel({
       });
       setMode({ kind: "create" });
       setRecogerDraft(emptyRecogerDraft);
-      onRefresh();
     } catch (err) {
       onMessage(err instanceof Error ? err.message : "Error al registrar recogida");
     }
@@ -539,7 +624,7 @@ export default function ConsignacionesPanel({
     };
 
     try {
-      await postForm("/api/consignaciones/reactivar", {
+      const payload = await postForm("/api/consignaciones/reactivar", {
         client_id: currentEditingClient.id,
         units_with_alcohol: reactivarDraft.unitsWithAlcohol,
         units_without_alcohol: reactivarDraft.unitsWithoutAlcohol,
@@ -547,6 +632,37 @@ export default function ConsignacionesPanel({
         price_without_alcohol: reactivarDraft.priceWithoutAlcohol || undefined,
         notes: reactivarDraft.notes.trim() || undefined
       });
+
+      const p = payload as Record<string, unknown>;
+      if (p && p.clientUpdate) {
+        const cu = p.clientUpdate as Record<string, unknown>;
+        const newReactivation = p.reactivation
+          ? mapApiConsignmentReactivation(p.reactivation as Record<string, unknown>)
+          : null;
+        const newSales = ((p.sales as unknown[]) ?? []).map((r) => mapApiSale(r as Record<string, unknown>, state.ambassadors));
+        const newConsumptions = ((p.consumptions as unknown[]) ?? []).map((r) => mapApiSaleBatchConsumption(r as Record<string, unknown>));
+        onStateUpdate((prev) => ({
+          ...prev,
+          consignmentReactivations: newReactivation
+            ? [newReactivation, ...prev.consignmentReactivations]
+            : prev.consignmentReactivations,
+          consignmentClients: prev.consignmentClients.map((c) =>
+            c.id === cu.id
+              ? {
+                  ...c,
+                  baseQuantityWithAlcohol: Number(cu.baseWithAlcohol),
+                  baseQuantityWithoutAlcohol: Number(cu.baseWithoutAlcohol),
+                  nextReplenishmentDate: String(cu.nextReplenishmentDate),
+                  priceWithAlcohol: cu.priceWithAlcohol != null ? Number(cu.priceWithAlcohol) || undefined : undefined,
+                  priceWithoutAlcohol: cu.priceWithoutAlcohol != null ? Number(cu.priceWithoutAlcohol) || undefined : undefined
+                }
+              : c
+          ),
+          sales: [...prev.sales, ...newSales],
+          saleBatchConsumptions: [...prev.saleBatchConsumptions, ...newConsumptions]
+        }));
+      }
+
       setSuccessInvoice({
         kind: "consignment_reactivation",
         number: predictNextNumber(
@@ -568,7 +684,6 @@ export default function ConsignacionesPanel({
       });
       setMode({ kind: "create" });
       setReactivarDraft(emptyReactivarDraft);
-      onRefresh();
     } catch {
       onMessage("Error al reactivar cliente");
     }
