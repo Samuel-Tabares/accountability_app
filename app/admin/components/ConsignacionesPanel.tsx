@@ -252,9 +252,6 @@ export default function ConsignacionesPanel({
     return buildTimeline(currentEditingClient, replenishmentsForClient, pickupsForClient);
   }, [currentEditingClient, replenishmentsForClient, pickupsForClient]);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const sevenDaysOut = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
   const activeClients = useMemo(
     () =>
       consignmentClients.filter(
@@ -271,17 +268,19 @@ export default function ConsignacionesPanel({
     [consignmentClients]
   );
 
-  const urgentClients = useMemo(
-    () => activeClients.filter((c) => c.nextReplenishmentDate <= sevenDaysOut),
-    [activeClients, sevenDaysOut]
-  );
-
-  const overdueCount = urgentClients.filter((c) => c.nextReplenishmentDate < today).length;
-  const upcomingCount = urgentClients.filter(
-    (c) => c.nextReplenishmentDate >= today && c.nextReplenishmentDate <= sevenDaysOut
-  ).length;
-
-  const visibleClients = showHistorical ? consignmentClients : activeClients;
+  const visibleClients = useMemo(() => {
+    const base = showHistorical ? consignmentClients : activeClients;
+    const isClosed = (c: ConsignmentClient) =>
+      c.baseQuantityWithAlcohol === 0 && c.baseQuantityWithoutAlcohol === 0;
+    return base.slice().sort((a, b) => {
+      // cerrados siempre al final
+      const aClosed = isClosed(a);
+      const bClosed = isClosed(b);
+      if (aClosed !== bClosed) return aClosed ? 1 : -1;
+      // activos: por urgencia de reposición (más vencido / más pronto, primero)
+      return a.nextReplenishmentDate.localeCompare(b.nextReplenishmentDate);
+    });
+  }, [showHistorical, consignmentClients, activeClients]);
 
   async function saveClient() {
     const isEdit = mode.kind === "edit";
@@ -1116,25 +1115,7 @@ export default function ConsignacionesPanel({
             )}
         </div>
 
-        <div className="table-card">
-          {urgentClients.length > 0 && (
-            <div className="alert-banner">
-              <span>
-                <strong>{overdueCount} vencidas</strong>, <strong>{upcomingCount} próximas</strong>
-              </span>
-              {urgentClients.map((client) => (
-                <Button
-                  key={client.id}
-                  variant="secondary"
-                  onClick={() => loadClientForReponer(client.id)}
-                  style={{ fontSize: "0.85rem" }}
-                >
-                  {client.name}
-                </Button>
-              ))}
-            </div>
-          )}
-
+        <div className="table-card scroll-card-fill">
           <div className="table-head">
             <div>
               <h3>Clientes</h3>
@@ -1159,7 +1140,7 @@ export default function ConsignacionesPanel({
             </label>
           </div>
 
-          <div className="consignment-cards">
+          <div className="consignment-cards consignment-cards-scroll">
             {visibleClients.length === 0 ? (
               <p style={{ padding: "1rem", color: "var(--muted)" }}>Sin clientes para mostrar.</p>
             ) : (
