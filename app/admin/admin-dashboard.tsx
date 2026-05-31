@@ -113,6 +113,10 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     router.refresh();
   }
 
+  function handleStateUpdate(updater: (prev: AppState) => AppState) {
+    setState(updater);
+  }
+
   async function signOut() {
     try {
       await fetch("/api/auth/logout", {
@@ -136,70 +140,70 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             icon={<Hammer size={18} />}
             label="Inversión"
             value={formatCurrency(ledger.totals.investment)}
-            subtext="Costo total invertido en lotes."
+            subtext="Total en lotes"
             accent="accent-orange"
           />
           <MetricCard
             icon={<BadgeDollarSign size={18} />}
-            label="Venta base"
+            label="Ingresos brutos"
             value={formatCurrency(ledger.totals.baseSales)}
-            subtext="Precio antes de descuentos."
-            accent="accent-green"
-          />
-          <MetricCard
-            icon={<BadgeDollarSign size={18} />}
-            label="Ingresos netos"
-            value={formatCurrency(ledger.totals.revenue)}
-            subtext="Dinero realmente cobrado."
+            subtext="Antes de descuentos"
             accent="accent-green"
           />
           <MetricCard
             icon={<Percent size={18} />}
             label="Descuentos"
             value={formatCurrency(ledger.totals.discounts)}
-            subtext="Dinero que no se cobró por ventas mayoristas."
+            subtext="A clientes por embajadores"
             accent="accent-orange"
           />
           <MetricCard
-            icon={<HandCoins size={18} />}
-            label="Comisiones"
-            value={formatCurrency(ledger.totals.commissions)}
-            subtext="Pago acumulado para embajadores."
-            accent="accent-cream"
+            icon={<BadgeDollarSign size={18} />}
+            label="Ingresos netos"
+            value={formatCurrency(ledger.totals.revenue)}
+            subtext="Después de descuentos"
+            accent="accent-green"
           />
           <MetricCard
             icon={<Factory size={18} />}
             label="Costo producción"
             value={formatCurrency(ledger.totals.costOfGoods)}
-            subtext="Costo FIFO de granizados vendidos (excluye consignación)."
+            subtext="Unidad de granizado, excluye consignación"
             accent="accent-orange"
+          />
+          <MetricCard
+            icon={<CheckCircle2 size={18} />}
+            label="Utilidad bruta"
+            value={formatCurrency(ledger.totals.grossProfit)}
+            subtext="Ingresos netos menos costo de producción"
+            accent="accent-yellow"
+          />
+          <MetricCard
+            icon={<HandCoins size={18} />}
+            label="Comisiones"
+            value={formatCurrency(ledger.totals.commissions)}
+            subtext="A embajadores"
+            accent="accent-cream"
+          />
+          <MetricCard
+            icon={<Hammer size={18} />}
+            label="Gastos"
+            value={formatCurrency(ledger.totals.manualExpenses)}
+            subtext="Registro de pagos/compras Trabix"
+            accent="accent-cream"
+          />
+          <MetricCard
+            icon={<BadgeDollarSign size={18} />}
+            label="Utilidad neta"
+            value={formatCurrency(ledger.totals.netProfit)}
+            subtext="Utilidad bruta menos comisiones y gastos"
+            accent="accent-cream"
           />
           <MetricCard
             icon={<Package size={18} />}
             label="Stock en consignación"
             value={formatCurrency(ledger.totals.consignmentStockCogs)}
             subtext="Costo de producción del stock actualmente en establecimientos."
-            accent="accent-cream"
-          />
-          <MetricCard
-            icon={<Hammer size={18} />}
-            label="Gastos manuales"
-            value={formatCurrency(ledger.totals.manualExpenses)}
-            subtext="Pagos operativos registrados manualmente."
-            accent="accent-cream"
-          />
-          <MetricCard
-            icon={<CheckCircle2 size={18} />}
-            label="Utilidad bruta"
-            value={formatCurrency(ledger.totals.grossProfit)}
-            subtext="Ingresos menos costo de producción."
-            accent="accent-yellow"
-          />
-          <MetricCard
-            icon={<BadgeDollarSign size={18} />}
-            label="Utilidad neta"
-            value={formatCurrency(ledger.totals.netProfit)}
-            subtext="Utilidad bruta menos comisiones y gastos manuales."
             accent="accent-cream"
           />
           <MetricCard
@@ -236,7 +240,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             state={state}
             ledger={ledger}
             ambassadorOptions={ambassadorOptions}
-            onRefresh={refreshDashboard}
+            onStateUpdate={handleStateUpdate}
             onMessage={showMessage}
           />
         ) : null}
@@ -245,7 +249,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
           <ProductionPanel
             state={state}
             ledger={ledger}
-            onRefresh={refreshDashboard}
+            onStateUpdate={handleStateUpdate}
             onMessage={showMessage}
           />
         ) : null}
@@ -254,7 +258,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
           <ExpensesPanel
             state={state}
             expensesSummary={expensesSummary}
-            onRefresh={refreshDashboard}
+            onStateUpdate={handleStateUpdate}
             onMessage={showMessage}
           />
         ) : null}
@@ -264,7 +268,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             state={state}
             ledger={ledger}
             currentUser={currentUser}
-            onRefresh={refreshDashboard}
+            onStateUpdate={handleStateUpdate}
             onMessage={showMessage}
           />
         ) : null}
@@ -273,7 +277,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
           <SettingsPanel
             initialSettings={state.settings}
             initialCompanyInfo={state.companyInfo}
-            onRefresh={refreshDashboard}
+            onStateUpdate={handleStateUpdate}
             onMessage={showMessage}
           />
         ) : null}
@@ -289,32 +293,48 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
         ) : null}
 
         <section className="footer-note">
-          <div>
+          <div className="footer-note-header">
+            <span className="footer-note-spacer" />
             <strong>Resumen semanal</strong>
-            <p>
+            <p className="footer-note-date">
               Del {formatDate(currentWeekBounds.start)} al{" "}
               {formatDate(new Date(currentWeekBounds.end.getTime() - 24 * 60 * 60 * 1000))}
             </p>
           </div>
           <div className="weekly-summary">
             <div className="mini-box">
-              <span>Ingresos netos</span>
+              <span className="mini-box-label">
+                <span className="mini-box-icon accent-green"><BadgeDollarSign size={13} /></span>
+                Ingresos netos
+              </span>
               <strong>{formatCurrency(weeklyRevenue)}</strong>
             </div>
             <div className="mini-box">
-              <span>Utilidad bruta</span>
+              <span className="mini-box-label">
+                <span className="mini-box-icon accent-yellow"><CheckCircle2 size={13} /></span>
+                Utilidad bruta
+              </span>
               <strong>{formatCurrency(weeklyGrossProfit)}</strong>
             </div>
             <div className="mini-box">
-              <span>Utilidad neta</span>
+              <span className="mini-box-label">
+                <span className="mini-box-icon accent-cream"><BadgeDollarSign size={13} /></span>
+                Utilidad neta
+              </span>
               <strong>{formatCurrency(weeklyNetProfit)}</strong>
             </div>
             <div className="mini-box">
-              <span>Comisiones</span>
+              <span className="mini-box-label">
+                <span className="mini-box-icon accent-cream"><HandCoins size={13} /></span>
+                Comisiones
+              </span>
               <strong>{formatCurrency(weeklyCommissions)}</strong>
             </div>
             <div className="mini-box">
-              <span>Gastos manuales</span>
+              <span className="mini-box-label">
+                <span className="mini-box-icon accent-cream"><Hammer size={13} /></span>
+                Gastos manuales
+              </span>
               <strong>{formatCurrency(weeklyManualExpenses)}</strong>
             </div>
           </div>

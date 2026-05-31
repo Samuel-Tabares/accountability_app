@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
       net_profit: netProfit,
       margin
     })
-    .select("*")
+    .select("id, created_at, sale_type, quantity, amount, note, ambassador_profile_id, wholesale_variant, pricing_version_id, price_total, wholesale_discount_pct, wholesale_discount_value, wholesale_net_total, wholesale_base_commission_pct, wholesale_boost_bonus_pct, commission_rate, commission_value, cost_of_goods, gross_profit, net_profit, margin, consignment_client_id")
     .single();
 
   if (error || !sale) {
@@ -176,15 +176,19 @@ export async function POST(request: NextRequest) {
     return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "sale_failed");
   }
 
+  let insertedConsumptions: Array<{ sale_id: string; batch_id: string | null; units: number; cost: number }> = [];
   if (fifo.rows.length > 0) {
-    const { error: consumptionError } = await auth.adminClient.from("sale_batch_consumptions").insert(
-      fifo.rows.map((row) => ({
-        sale_id: sale.id,
-        batch_id: row.batch_id,
-        units: row.units,
-        cost: row.cost
-      }))
-    );
+    const { data: consumptionData, error: consumptionError } = await auth.adminClient
+      .from("sale_batch_consumptions")
+      .insert(
+        fifo.rows.map((row) => ({
+          sale_id: sale.id,
+          batch_id: row.batch_id,
+          units: row.units,
+          cost: row.cost
+        }))
+      )
+      .select("sale_id, batch_id, units, cost");
 
     if (consumptionError) {
       await auth.adminClient.from("sales").delete().eq("id", sale.id);
@@ -196,6 +200,7 @@ export async function POST(request: NextRequest) {
       }
       return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "sale_failed");
     }
+    insertedConsumptions = (consumptionData ?? []) as typeof insertedConsumptions;
   }
 
   const automaticExpenses = [
@@ -223,8 +228,12 @@ export async function POST(request: NextRequest) {
       : null
   ].filter((expense): expense is NonNullable<typeof expense> => Boolean(expense));
 
+  let insertedExpenses: Array<Record<string, unknown>> = [];
   if (automaticExpenses.length > 0) {
-    const { error: expensesError } = await auth.adminClient.from("expenses").insert(automaticExpenses);
+    const { data: expenseData, error: expensesError } = await auth.adminClient
+      .from("expenses")
+      .insert(automaticExpenses)
+      .select("*");
 
     if (expensesError) {
       await auth.adminClient.from("sales").delete().eq("id", sale.id);
@@ -236,10 +245,15 @@ export async function POST(request: NextRequest) {
       }
       return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "sale_failed");
     }
+    insertedExpenses = (expenseData ?? []) as Array<Record<string, unknown>>;
   }
 
   if (jsonMode) {
-    return jsonResponse(true, "Venta guardada correctamente.", 201);
+    return jsonResponse(true, "Venta guardada correctamente.", 201, {
+      sale,
+      consumptions: insertedConsumptions,
+      expenses: insertedExpenses
+    });
   }
 
   return setRedirect(response, request, dashboardPathForRole(auth.profile.role));

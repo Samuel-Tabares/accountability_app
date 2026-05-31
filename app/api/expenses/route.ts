@@ -25,20 +25,24 @@ export async function POST(request: NextRequest) {
     return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "invalid_expense");
   }
 
-  const { error } = await auth.adminClient.from("expenses").insert({
-    amount,
-    category,
-    description,
-    expense_type: expenseType as "monthly" | "oneTime" | "commission" | "discount",
-    ambassador_profile_id: ambassadorProfileId,
-    created_by: auth.userId
-  });
+  const { data: expense, error } = await auth.adminClient
+    .from("expenses")
+    .insert({
+      amount,
+      category,
+      description,
+      expense_type: expenseType as "monthly" | "oneTime" | "commission" | "discount",
+      ambassador_profile_id: ambassadorProfileId,
+      created_by: auth.userId
+    })
+    .select("*")
+    .single();
 
   if (error) {
     if (jsonMode) return jsonResponse(false, "No se pudo guardar el gasto.", 500);
     return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "expense_failed");
   }
 
-  if (jsonMode) return jsonResponse(true, "Gasto guardado correctamente.", 201);
+  if (jsonMode) return jsonResponse(true, "Gasto guardado correctamente.", 201, { expense });
   return setRedirect(response, request, dashboardPathForRole(auth.profile.role));
 }

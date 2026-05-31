@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { formatCurrency, formatDate, summarizeExpenses } from "@/src/lib/ledger";
 import type { AppState, Expense } from "@/src/lib/types";
+
+import { mapApiExpense } from "@/src/lib/state-mappers";
 import { Button, Field, Input, postForm, Section, Select } from "./ui";
 
 const emptyExpense = {
@@ -29,25 +31,30 @@ function formatExpenseCategory(category: string) {
 type ExpensesPanelProps = {
   state: AppState;
   expensesSummary: ReturnType<typeof summarizeExpenses>;
-  onRefresh: () => void;
+  onStateUpdate: (updater: (prev: AppState) => AppState) => void;
   onMessage: (msg: string) => void;
 };
 
-export default function ExpensesPanel({ state, expensesSummary, onRefresh, onMessage }: ExpensesPanelProps) {
+export default function ExpensesPanel({ state, expensesSummary, onStateUpdate, onMessage }: ExpensesPanelProps) {
   const [expenseForm, setExpenseForm] = useState(emptyExpense);
 
   async function saveExpense() {
     if (!expenseForm.description.trim()) return;
 
     try {
-      await postForm("/api/expenses", {
+      const payload = await postForm("/api/expenses", {
         category: expenseForm.category.trim(),
         description: expenseForm.description.trim(),
         amount: expenseForm.amount,
         expense_type: expenseForm.type
       });
+
+      if (payload && typeof payload === "object" && "expense" in payload) {
+        const newExpense = mapApiExpense((payload as Record<string, unknown>).expense as Record<string, unknown>);
+        onStateUpdate((prev) => ({ ...prev, expenses: [newExpense, ...prev.expenses] }));
+      }
+
       setExpenseForm(emptyExpense);
-      onRefresh();
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo guardar el gasto.");
     }
@@ -56,12 +63,11 @@ export default function ExpensesPanel({ state, expensesSummary, onRefresh, onMes
   return (
     <Section
       eyebrow="Gastos manuales"
-      title="Registrar gastos manuales mensuales u operativos"
-      description="Registra costos fijos del negocio con categorías predeterminadas."
+      title="Registrar gasto"
+      description="Costos fijos y operativos del negocio."
     >
       <div className="form-grid split">
         <div className="form-card">
-          <h3>Nuevo gasto manual</h3>
           <div className="grid-2">
             <Field label="Categoría">
               <Select
@@ -116,37 +122,42 @@ export default function ExpensesPanel({ state, expensesSummary, onRefresh, onMes
         <div className="table-card expenses-card">
           <div className="table-head">
             <div>
-              <h3>Gastos manuales registrados</h3>
-              <p>
-                Manuales mensuales: {formatCurrency(expensesSummary.monthlyTotal)} · Manuales únicos:{" "}
-                {formatCurrency(expensesSummary.oneTimeTotal)} · Descuentos trazables:{" "}
-                {formatCurrency(expensesSummary.discountTotal)} · Comisiones:{" "}
-                {formatCurrency(expensesSummary.commissionTotal)}
-              </p>
+              <h3>Gastos registrados</h3>
+              <div className="table-head-meta">
+                <span className="chip">Mensuales {formatCurrency(expensesSummary.monthlyTotal)}</span>
+                <span className="chip">Únicos {formatCurrency(expensesSummary.oneTimeTotal)}</span>
+                <span className="chip">Comisiones {formatCurrency(expensesSummary.commissionTotal)}</span>
+              </div>
             </div>
             <span className="chip">{state.expenses.length} movimientos</span>
           </div>
 
           <div className="stack-table stack-table-scroll">
-            {state.expenses.map((expense) => (
-              <article key={expense.id} className="table-row">
-                <div>
-                  <strong>
-                    {expense.type === "commission"
-                      ? "Comision"
-                      : expense.type === "discount"
-                        ? "Descuento"
-                        : formatExpenseCategory(expense.category)}
-                  </strong>
-                  <span>
-                    {expense.description} · {expenseTypeLabel(expense)} · {formatDate(expense.createdAt)}
-                  </span>
-                </div>
-                <div className="row-meta">
-                  <strong>{formatCurrency(expense.amount)}</strong>
-                </div>
-              </article>
-            ))}
+            {state.expenses.map((expense) => {
+              const isAuto = expense.type === "commission" || expense.type === "discount";
+              return (
+                <article key={expense.id} className={`table-row${isAuto ? " row-auto" : ""}`}>
+                  <div>
+                    <strong>
+                      {isAuto ? (
+                        <>
+                          {expense.type === "commission" ? "Comisión" : "Descuento"}
+                          <span className="row-auto-tag">auto</span>
+                        </>
+                      ) : (
+                        formatExpenseCategory(expense.category)
+                      )}
+                    </strong>
+                    <span>
+                      {expense.description} · {expenseTypeLabel(expense)} · {formatDate(expense.createdAt)}
+                    </span>
+                  </div>
+                  <div className="row-meta">
+                    <strong>{formatCurrency(expense.amount)}</strong>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </div>
       </div>

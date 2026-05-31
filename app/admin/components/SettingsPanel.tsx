@@ -8,14 +8,14 @@ import { Button, Field, Input, postForm, Section } from "./ui";
 type SettingsPanelProps = {
   initialSettings: AppState["settings"];
   initialCompanyInfo: CompanyInfo;
-  onRefresh: () => void;
+  onStateUpdate: (updater: (prev: AppState) => AppState) => void;
   onMessage: (msg: string) => void;
 };
 
 export default function SettingsPanel({
   initialSettings,
   initialCompanyInfo,
-  onRefresh,
+  onStateUpdate,
   onMessage
 }: SettingsPanelProps) {
   const [settings, setSettings] = useState<AppState["settings"]>(initialSettings);
@@ -53,8 +53,8 @@ export default function SettingsPanel({
             : "No se pudo actualizar los datos de empresa.")
         );
       }
+      onStateUpdate((prev) => ({ ...prev, companyInfo }));
       onMessage("Datos de empresa actualizados.");
-      onRefresh();
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo actualizar los datos de empresa.");
     }
@@ -90,8 +90,8 @@ export default function SettingsPanel({
         wholesale_with_alcohol_tiers: JSON.stringify(settings.wholesaleWithAlcoholTiers),
         wholesale_no_alcohol_tiers: JSON.stringify(settings.wholesaleNoAlcoholTiers)
       });
+      onStateUpdate((prev) => ({ ...prev, settings }));
       onMessage("Configuración guardada como nueva versión.");
-      onRefresh();
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo guardar la configuración.");
     }

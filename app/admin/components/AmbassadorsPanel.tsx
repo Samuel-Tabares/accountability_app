@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { formatCurrency, formatDate, isBoostActive } from "@/src/lib/ledger";
 import type { Ambassador, AppState, CalculatedState } from "@/src/lib/types";
 import type { DashboardUser } from "./ui";
+import { mapApiAmbassador } from "@/src/lib/state-mappers";
 import { Button, Field, Input, postForm, saleRealTotal, Section, Select } from "./ui";
 
 type AmbassadorDraft = Partial<Ambassador> & {
@@ -32,11 +33,11 @@ type AmbassadorsPanelProps = {
   state: AppState;
   ledger: CalculatedState;
   currentUser: DashboardUser;
-  onRefresh: () => void;
+  onStateUpdate: (updater: (prev: AppState) => AppState) => void;
   onMessage: (msg: string) => void;
 };
 
-export default function AmbassadorsPanel({ state, ledger, currentUser, onRefresh, onMessage }: AmbassadorsPanelProps) {
+export default function AmbassadorsPanel({ state, ledger, currentUser, onStateUpdate, onMessage }: AmbassadorsPanelProps) {
   const [ambassadorDraft, setAmbassadorDraft] = useState<AmbassadorDraft>({});
   const [editingAmbassadorId, setEditingAmbassadorId] = useState<string | null>(null);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedCredentials>(null);
@@ -75,15 +76,25 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onRefresh
 
     try {
       if (editingAmbassadorId) {
-        await postForm("/api/profiles", {
+        const payload = await postForm("/api/profiles", {
           profile_id: editingAmbassadorId,
           full_name: name,
           phone: ambassadorDraft.phone ?? "",
           is_active: ambassadorDraft.isActive ?? true
         });
+        if (payload && typeof payload === "object" && "profileId" in payload) {
+          const p = payload as { profileId: string; fullName: string | null; phone: string | null; isActive: boolean };
+          onStateUpdate((prev) => ({
+            ...prev,
+            ambassadors: prev.ambassadors.map((a) =>
+              a.id === p.profileId
+                ? { ...a, name: p.fullName ?? a.name, notes: p.phone ?? a.notes, active: p.isActive }
+                : a
+            )
+          }));
+        }
         setAmbassadorDraft({});
         setEditingAmbassadorId(null);
-        onRefresh();
         return;
       }
 
@@ -99,9 +110,12 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onRefresh
           reason: "created"
         });
       }
+      if (payload && typeof payload === "object" && "profile" in payload) {
+        const newAmbassador = mapApiAmbassador((payload as Record<string, unknown>).profile as Record<string, unknown>);
+        onStateUpdate((prev) => ({ ...prev, ambassadors: [...prev.ambassadors, newAmbassador] }));
+      }
       setAmbassadorDraft({});
-      onMessage("Embajador creado. Comparte las credenciales antes de refrescar.");
-      onRefresh();
+      onMessage("Embajador creado. Comparte las credenciales antes de cerrar.");
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo guardar el embajador.");
     }
@@ -109,8 +123,18 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onRefresh
 
   async function toggleAmbassadorBoost(ambassadorId: string) {
     try {
-      await postForm("/api/embajadores/boost", { profile_id: ambassadorId });
-      onRefresh();
+      const payload = await postForm("/api/embajadores/boost", { profile_id: ambassadorId });
+      if (payload && typeof payload === "object" && "profileId" in payload) {
+        const p = payload as { profileId: string; boostActive: boolean; boostExpiresAt: string | null };
+        onStateUpdate((prev) => ({
+          ...prev,
+          ambassadors: prev.ambassadors.map((a) =>
+            a.id === p.profileId
+              ? { ...a, boostActive: p.boostActive, boostExpiresAt: p.boostExpiresAt ?? undefined }
+              : a
+          )
+        }));
+      }
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo cambiar el boost.");
     }
@@ -126,8 +150,7 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onRefresh
           reason: "reset"
         });
       }
-      onMessage("Contraseña temporal generada. Compártela antes de refrescar.");
-      onRefresh();
+      onMessage("Contraseña temporal generada. Compártela antes de cerrar.");
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo resetear la contraseña.");
     }
@@ -217,7 +240,7 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onRefresh
           </div>
         </div>
 
-        <div className="table-card">
+        <div className="table-card scroll-card">
           <div className="table-head">
             <div>
               <h3>Embajadores</h3>
@@ -226,7 +249,7 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onRefresh
             <span className="chip">{state.ambassadors.length} perfiles</span>
           </div>
 
-          <div className="stack-table">
+          <div className="stack-table stack-table-scroll">
             {topAmbassadors.map((ambassador) => {
               const boostActive = isBoostActive(ambassador);
               return (

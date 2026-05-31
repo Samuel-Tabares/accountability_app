@@ -34,6 +34,11 @@ export async function POST(request: NextRequest) {
     return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "profile_failed");
   }
 
-  if (jsonMode) return jsonResponse(true, "Perfil actualizado correctamente.", 200);
+  if (jsonMode) return jsonResponse(true, "Perfil actualizado correctamente.", 200, {
+    profileId: targetId,
+    fullName,
+    phone,
+    isActive
+  });
   return setRedirect(response, request, dashboardPathForRole(auth.profile.role));
 }

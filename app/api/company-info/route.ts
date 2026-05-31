@@ -44,7 +44,16 @@ export async function PUT(request: NextRequest) {
     return response;
   }
 
-  if (jsonMode) return jsonResponse(true, "Datos de empresa actualizados", 200);
+  if (jsonMode) return jsonResponse(true, "Datos de empresa actualizados", 200, {
+    companyInfo: {
+      legalName,
+      nit,
+      address,
+      phone,
+      taxStatus,
+      sanitaryRegistry: sanitaryRegistry || undefined
+    }
+  });
   return response;
 }
 
