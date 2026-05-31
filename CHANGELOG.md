@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.12.0] - 2026-05-30
+
+### Performance
+
+- **Eliminación de `router.refresh()` en mutaciones** — cada acción del admin (registrar venta, lote, gasto, embajador, boost, configuración, datos de empresa) ahora actualiza el estado React local directamente desde la respuesta JSON de la API, sin re-ejecutar los 14 queries SSR del dashboard. Tiempo post-acción reducido de ~2–4 s a ~50 ms.
+  - Rutas API (`/api/sales`, `/api/batches`, `/api/expenses`, `/api/profiles`, `/api/embajadores`, `/api/embajadores/boost`, `/api/settings`, `/api/company-info`) ahora devuelven los registros insertados/modificados en la respuesta JSON.
+  - Nuevo `src/lib/state-mappers.ts` con funciones de mapeo compartidas entre `admin/page.tsx` y los panels del cliente (`mapApiSale`, `mapApiExpense`, `mapApiBatch`, `mapApiSaleBatchConsumption`, `mapApiAmbassador`).
+  - Panels (`SalesPanel`, `ProductionPanel`, `ExpensesPanel`, `AmbassadorsPanel`, `SettingsPanel`) migrados a `onStateUpdate` con merge local; `ConsignacionesPanel` conserva `onRefresh` por su complejidad transaccional.
+- **Fast-path en auth de API** — `getRouteAuthContext` en `src/lib/route-auth.ts` ahora verifica primero la cookie `trabix-session` (HMAC-SHA256 ya verificada por middleware). Si es válida, salta el round-trip de red a Supabase Auth (`getUser()`), ahorrando ~100–300 ms en cada request autenticado.
+
+### Changed
+
+- `ConsignacionesPanel` ordena los clientes por urgencia de reposición (vencidos/más próximos primero; cerrados al final) en lugar de mostrar una alerta urgente separada. El banner de alertas fue eliminado.
+- Métric cards del header del dashboard cambian de `grid` a `flex-wrap` para mejor comportamiento responsivo en pantallas intermedias.
+- `table-card` recibe fondo (`rgba(255,255,255,0.38)`) y borde explícito para diferenciarse del fondo de panel.
+- Pills de tipo de venta más compactas (alto reducido de 48 px a 38 px).
+- Resumen semanal pasa a grid de 5 columnas (era 2); responsive a 2 cols en mobile.
+- Footer del dashboard reorganizado con `footer-note-header` (título centrado, fecha alineada a la derecha), adaptado a una columna en mobile.
+
+### Added
+
+- Nuevas clases CSS: `scroll-card`, `scroll-card-fill`, `consignment-cards-scroll` para contenedores con scroll interno en consignaciones; `form-price-preview`, `table-head-meta`, `notes-toggle`, `row-auto`, `row-auto-tag`, `mini-box-label`, `mini-box-icon`.
+- `scripts/seed-test-data.sql` — seed completo en volumen para pruebas: 12 lotes (mezcla con/sin licor), 12 embajadores con auth (contraseña `Trabix123!`), ~60 ventas variadas y 15 clientes de consignación con reposiciones. Destructivo: limpia datos existentes antes de insertar.
+
+### Removed
+
+- `scripts/seed-lotes.sql` — reemplazado por `seed-test-data.sql`.
+
 ## [0.11.0] - 2026-05-28
 
 ### Added
