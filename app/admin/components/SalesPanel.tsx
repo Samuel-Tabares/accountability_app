@@ -11,12 +11,11 @@ import {
   resolveWholesaleSelection,
   saleTypeLabel
 } from "@/src/lib/ledger";
-import type { Ambassador, CalculatedState, ProductVariant, SaleType } from "@/src/lib/types";
+import type { Ambassador, AppState, CalculatedState, ProductVariant, SaleType } from "@/src/lib/types";
 import { listWholesaleInvoices } from "@/src/lib/invoice/builders";
 import { predictNextNumber } from "@/src/lib/invoice/numbering";
 import type { WholesaleInvoice } from "@/src/lib/invoice/types";
 import { mapApiExpense, mapApiSale, mapApiSaleBatchConsumption } from "@/src/lib/state-mappers";
-import type { AppState } from "@/src/lib/types";
 import { Button, displayNumber, Field, Input, parseNumber, postForm, saleRealTotal, Section, Select, TextArea } from "./ui";
 import InvoiceSuccessModal from "./InvoiceSuccessModal";
 import InvoiceHistoryModal from "./InvoiceHistoryModal";
