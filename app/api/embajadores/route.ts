@@ -73,7 +73,29 @@ export async function POST(request: NextRequest) {
   }
 
   if (jsonMode) {
-    return jsonResponse(true, "Embajador creado correctamente.", 201, { username, code, password });
+    const adminClient2 = createSupabaseAdminClient();
+    const { data: profileRow } = await adminClient2
+      .from("profiles")
+      .select("id, username, full_name, phone, ambassador_id, level, is_active, boost_active, boost_expires_at, created_at")
+      .eq("username", username)
+      .maybeSingle();
+    return jsonResponse(true, "Embajador creado correctamente.", 201, {
+      username,
+      code,
+      password,
+      profile: profileRow ?? {
+        id: "pending",
+        username,
+        full_name: fullName,
+        phone,
+        ambassador_id: code,
+        level: "nivel0",
+        is_active: true,
+        boost_active: false,
+        boost_expires_at: null,
+        created_at: new Date().toISOString()
+      }
+    });
   }
   return setRedirect(response, request, "/admin", undefined, "embajador_created");
 }

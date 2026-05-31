@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { formatCurrency } from "@/src/lib/ledger";
 import type { AppState, CalculatedState, ProductVariant } from "@/src/lib/types";
+import { mapApiBatch } from "@/src/lib/state-mappers";
 import { Button, displayNumber, Field, Input, parseNumber, postForm, Section, Select, TextArea } from "./ui";
 
 type BatchOtherDraft = {
@@ -41,12 +42,13 @@ function variantLabel(variant: ProductVariant) {
 type ProductionPanelProps = {
   state: AppState;
   ledger: CalculatedState;
-  onRefresh: () => void;
+  onStateUpdate: (updater: (prev: AppState) => AppState) => void;
   onMessage: (msg: string) => void;
 };
 
-export default function ProductionPanel({ state, ledger, onRefresh, onMessage }: ProductionPanelProps) {
+export default function ProductionPanel({ state, ledger, onStateUpdate, onMessage }: ProductionPanelProps) {
   const [batchForm, setBatchForm] = useState(emptyBatch);
+  const [showNotes, setShowNotes] = useState(false);
 
   function updateOtherBatchItem(itemId: string, field: keyof BatchOtherDraft, value: string | number) {
     setBatchForm((prev) => ({
@@ -83,7 +85,7 @@ export default function ProductionPanel({ state, ledger, onRefresh, onMessage }:
     ];
 
     try {
-      await postForm("/api/batches", {
+      const payload = await postForm("/api/batches", {
         label: batchForm.label.trim(),
         variant: batchForm.variant,
         units_produced: batchForm.granizadoCount,
@@ -91,8 +93,17 @@ export default function ProductionPanel({ state, ledger, onRefresh, onMessage }:
         items: JSON.stringify(items),
         notes: batchForm.notes.trim()
       });
+
+      if (payload && typeof payload === "object" && "batch" in payload) {
+        const p = payload as Record<string, unknown>;
+        const newBatch = mapApiBatch(
+          p.batch as Record<string, unknown>,
+          p.items as Array<Record<string, unknown>> ?? []
+        );
+        onStateUpdate((prev) => ({ ...prev, batches: [newBatch, ...prev.batches] }));
+      }
+
       setBatchForm(emptyBatch);
-      onRefresh();
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo guardar el lote.");
     }
@@ -102,11 +113,10 @@ export default function ProductionPanel({ state, ledger, onRefresh, onMessage }:
     <Section
       eyebrow="FIFO"
       title="Lotes y costeo manual"
-      description="Registra la cantidad de granizados y su costo total, luego agrega otros gastos como envío o etiquetas."
+      description="Registra granizados producidos, su costo y gastos adicionales del lote."
     >
       <div className="form-grid split">
         <div className="form-card">
-          <h3>Nuevo lote</h3>
           <div className="grid-2">
             <Field label="Nombre del lote">
               <Input
@@ -182,12 +192,18 @@ export default function ProductionPanel({ state, ledger, onRefresh, onMessage }:
             ))}
           </div>
 
-          <Field label="Notas">
-            <TextArea
-              value={batchForm.notes}
-              onChange={(event) => setBatchForm((prev) => ({ ...prev, notes: event.target.value }))}
-            />
-          </Field>
+          {showNotes ? (
+            <Field label="Notas">
+              <TextArea
+                value={batchForm.notes}
+                onChange={(event) => setBatchForm((prev) => ({ ...prev, notes: event.target.value }))}
+              />
+            </Field>
+          ) : (
+            <button type="button" className="notes-toggle" onClick={() => setShowNotes(true)}>
+              + Agregar notas
+            </button>
+          )}
           <div className="actions">
             <Button onClick={saveBatch}>
               <Plus size={16} />
@@ -196,25 +212,25 @@ export default function ProductionPanel({ state, ledger, onRefresh, onMessage }:
           </div>
         </div>
 
-        <div className="table-card">
+        <div className="table-card scroll-card">
           <div className="table-head">
             <div>
               <h3>Lotes activos</h3>
-              <p>
-                Granizados totales: {ledger.totals.unitsProduced} | Restantes: {ledger.totals.unitsRemaining}
-              </p>
+              <div className="table-head-meta">
+                <span className="chip">{ledger.totals.unitsProduced} producidos</span>
+                <span className="chip">{ledger.totals.unitsRemaining} restantes</span>
+              </div>
             </div>
             <span className="chip">{state.batches.length} lotes</span>
           </div>
 
-          <div className="stack-table">
+          <div className="stack-table stack-table-scroll">
             {ledger.batches.map((batch) => (
               <article key={batch.id} className="table-row">
                 <div>
                   <strong>{batch.label}</strong>
                   <span>
-                    {variantLabel(batch.variant)} · {batch.unitsProduced} granizados ·{" "}
-                    {formatCurrency(batch.unitCost)} por granizado
+                    {variantLabel(batch.variant)} · {batch.unitsProduced} uds · {formatCurrency(batch.unitCost)}/ud
                   </span>
                 </div>
                 <div className="row-meta">

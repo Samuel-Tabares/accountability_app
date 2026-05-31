@@ -12,31 +12,43 @@ export type RouteAuthContext = {
 };
 
 export async function getRouteAuthContext(request: NextRequest, response: NextResponse) {
-  const supabase = createSupabaseRouteClient(request, response);
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
   const appSession = readAppSessionCookie(request.cookies);
-  const userId = user?.id ?? appSession?.userId;
 
-  if (!userId) {
-    return null;
+  // Fast path: HMAC-verified app session — skip the Supabase Auth network round-trip.
+  if (appSession) {
+    const adminClient = createSupabaseAdminClient();
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("id, role, is_active, must_change_password, username, full_name, email, phone, ambassador_id, boost_active, boost_expires_at, level, created_at, updated_at")
+      .eq("id", appSession.userId)
+      .maybeSingle();
+
+    if (!profile || !profile.is_active) return null;
+
+    return {
+      userId: appSession.userId,
+      profile: profile as ProfileRow,
+      supabase: createSupabaseRouteClient(request, response),
+      adminClient
+    };
   }
+
+  // Slow path: no app session cookie — validate via Supabase JWT.
+  const supabase = createSupabaseRouteClient(request, response);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
 
   const adminClient = createSupabaseAdminClient();
-  const profileClient = user ? supabase : adminClient;
-  const { data: profile } = await profileClient
+  const { data: profile } = await adminClient
     .from("profiles")
     .select("id, role, is_active, must_change_password, username, full_name, email, phone, ambassador_id, boost_active, boost_expires_at, level, created_at, updated_at")
-    .eq("id", userId)
+    .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !profile.is_active) {
-    return null;
-  }
+  if (!profile || !profile.is_active) return null;
 
   return {
-    userId,
+    userId: user.id,
     profile: profile as ProfileRow,
     supabase,
     adminClient

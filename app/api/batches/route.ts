@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   const { data: batch, error: batchError } = await auth.adminClient
     .from("production_batches")
     .insert({ label, variant, units_produced: unitsProduced, total_cost: totalCost, notes, created_by: auth.userId })
-    .select("id")
+    .select("*")
     .single();
 
   if (batchError || !batch) {
@@ -58,13 +58,18 @@ export async function POST(request: NextRequest) {
       unit_price: item.unitPrice
     }));
 
+  let insertedItems: Array<Record<string, unknown>> = [];
   if (itemRows.length > 0) {
-    const { error: itemsError } = await auth.adminClient.from("production_batch_items").insert(itemRows);
+    const { data: itemData, error: itemsError } = await auth.adminClient
+      .from("production_batch_items")
+      .insert(itemRows)
+      .select("*");
     if (itemsError) {
       return jsonResponse(false, "El lote se creó, pero no se pudieron guardar los insumos.", 500);
     }
+    insertedItems = (itemData ?? []) as Array<Record<string, unknown>>;
   }
 
-  if (jsonMode) return jsonResponse(true, "Lote guardado correctamente.", 201);
+  if (jsonMode) return jsonResponse(true, "Lote guardado correctamente.", 201, { batch, items: insertedItems });
   return response;
 }

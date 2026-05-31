@@ -11,10 +11,12 @@ import {
   resolveWholesaleSelection,
   saleTypeLabel
 } from "@/src/lib/ledger";
-import type { Ambassador, AppState, CalculatedState, ProductVariant, SaleType } from "@/src/lib/types";
+import type { Ambassador, CalculatedState, ProductVariant, SaleType } from "@/src/lib/types";
 import { listWholesaleInvoices } from "@/src/lib/invoice/builders";
 import { predictNextNumber } from "@/src/lib/invoice/numbering";
 import type { WholesaleInvoice } from "@/src/lib/invoice/types";
+import { mapApiExpense, mapApiSale, mapApiSaleBatchConsumption } from "@/src/lib/state-mappers";
+import type { AppState } from "@/src/lib/types";
 import { Button, displayNumber, Field, Input, parseNumber, postForm, saleRealTotal, Section, Select, TextArea } from "./ui";
 import InvoiceSuccessModal from "./InvoiceSuccessModal";
 import InvoiceHistoryModal from "./InvoiceHistoryModal";
@@ -80,11 +82,11 @@ type SalesPanelProps = {
   state: AppState;
   ledger: CalculatedState;
   ambassadorOptions: Ambassador[];
-  onRefresh: () => void;
+  onStateUpdate: (updater: (prev: AppState) => AppState) => void;
   onMessage: (msg: string) => void;
 };
 
-export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh, onMessage }: SalesPanelProps) {
+export default function SalesPanel({ state, ledger, ambassadorOptions, onStateUpdate, onMessage }: SalesPanelProps) {
   const [saleForm, setSaleForm] = useState(emptySale);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const [successInvoice, setSuccessInvoice] = useState<WholesaleInvoice | null>(null);
@@ -204,7 +206,7 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
         : null;
 
     try {
-      await postForm("/api/sales", {
+      const payload = await postForm("/api/sales", {
         sale_type: saleForm.saleType,
         quantity: saleForm.quantity,
         wholesale_variant: saleForm.wholesaleVariant,
@@ -244,9 +246,23 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
         setSuccessInvoice(invoice);
       }
 
+      if (payload && typeof payload === "object" && "sale" in payload) {
+        const p = payload as Record<string, unknown>;
+        const newSale = mapApiSale(p.sale as Record<string, unknown>, state.ambassadors);
+        const newConsumptions = (p.consumptions as Array<Record<string, unknown>> ?? []).map(mapApiSaleBatchConsumption);
+        const newExpenses = (p.expenses as Array<Record<string, unknown>> ?? []).map((r) =>
+          mapApiExpense(r, state.ambassadors)
+        );
+        onStateUpdate((prev) => ({
+          ...prev,
+          sales: [newSale, ...prev.sales],
+          saleBatchConsumptions: [...prev.saleBatchConsumptions, ...newConsumptions],
+          expenses: [...prev.expenses, ...newExpenses]
+        }));
+      }
+
       setSaleForm(emptySale);
       setEditingSaleId(null);
-      onRefresh();
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "No se pudo guardar la venta.");
     }
@@ -256,7 +272,7 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
     <Section
       eyebrow="Movimientos"
       title="Registrar ventas"
-      description="Usa un preset plano. La cantidad es editable por admin y el precio se calcula automáticamente."
+      description="Precio calculado automáticamente según el tipo y cantidad."
       action={
         <div className="section-head-metrics" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <span className="chip">{ledger.totals.unitsSold} granizados vendidos</span>
@@ -269,7 +285,6 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
     >
       <div className="form-grid split">
         <div className="form-card">
-          <h3>{editingSaleId ? "Editar venta" : "Nueva venta"}</h3>
           <div className="pill-grid">
             {salePanelOptions.map((option) => (
               <button
@@ -294,15 +309,12 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
                 onChange={(event) => updateSaleForm("quantity", parseNumber(event.target.value))}
               />
             </Field>
-            <Field label="Precio calculado">
-              <Input
-                value={
-                  saleForm.saleType === "wholesale" && salePreviewWholesale
-                    ? `${formatCurrency(salePreviewWholesale.grossTotal)} base`
-                    : formatCurrency(salePreviewPrice)
-                }
-                readOnly
-              />
+            <Field label="Total">
+              <div className="form-price-preview">
+                {saleForm.saleType === "wholesale" && salePreviewWholesale
+                  ? `${formatCurrency(salePreviewWholesale.grossTotal)} base`
+                  : formatCurrency(salePreviewPrice)}
+              </div>
             </Field>
           </div>
 
@@ -366,21 +378,21 @@ export default function SalesPanel({ state, ledger, ambassadorOptions, onRefresh
           </div>
         </div>
 
-        <div className="table-card">
+        <div className="table-card scroll-card">
           <div className="table-head">
             <div>
               <h3>Ventas recientes</h3>
-              <p>
-                Costo producción (ventas): {formatCurrency(ledger.totals.costOfGoods)} | Descuentos:{" "}
-                {formatCurrency(ledger.totals.discounts)} | Comisiones:{" "}
-                {formatCurrency(ledger.totals.commissions)}
-              </p>
+              <div className="table-head-meta">
+                <span className="chip">Costo {formatCurrency(ledger.totals.costOfGoods)}</span>
+                <span className="chip">Descuentos {formatCurrency(ledger.totals.discounts)}</span>
+                <span className="chip">Comisiones {formatCurrency(ledger.totals.commissions)}</span>
+              </div>
             </div>
             <span className="chip">{registryItems.length} registros</span>
           </div>
 
-          <div className="stack-table">
-            {registryItems.slice(0, 8).map((item) => {
+          <div className="stack-table stack-table-scroll">
+            {registryItems.map((item) => {
               if (item.kind === "pickup") {
                 const variantLabel = item.variant === "withAlcohol" ? "con licor" : "sin licor";
                 return (

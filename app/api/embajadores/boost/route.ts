@@ -64,6 +64,10 @@ export async function POST(request: NextRequest) {
     return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "boost_failed");
   }
 
-  if (jsonMode) return jsonResponse(true, active ? "Boost cancelado." : "Boost activo por 7 días.", 200);
+  if (jsonMode) return jsonResponse(true, active ? "Boost cancelado." : "Boost activo por 7 días.", 200, {
+    profileId,
+    boostActive: !active,
+    boostExpiresAt: nextBoostExpiresAt
+  });
   return setRedirect(response, request, dashboardPathForRole(auth.profile.role));
 }

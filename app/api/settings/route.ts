@@ -92,5 +92,5 @@ export async function POST(request: NextRequest) {
     return jsonResponse(false, "La configuración se creó, pero fallaron las tablas mayoristas.", 500);
   }
 
-  return jsonResponse(true, "Configuración guardada como nueva versión.", 201);
+  return jsonResponse(true, "Configuración guardada como nueva versión.", 201, { settings });
 }
