@@ -136,6 +136,10 @@ begin
     insert into auth.users (
       instance_id, id, aud, role, email, encrypted_password,
       email_confirmed_at, created_at, updated_at,
+      -- GoTrue escanea estos tokens a string no-nullable; si quedan NULL el login falla con 401
+      confirmation_token, recovery_token, email_change,
+      email_change_token_new, email_change_token_current,
+      phone_change, phone_change_token, reauthentication_token,
       raw_app_meta_data, raw_user_meta_data
     )
     values (
@@ -148,6 +152,9 @@ begin
       now(),
       now() - (i || ' days')::interval,
       now(),
+      '', '', '',
+      '', '',
+      '', '', '',
       jsonb_build_object('provider', 'email', 'providers', array['email']),
       jsonb_build_object(
         'username',  'emba' || lpad(i::text, 2, '0'),
@@ -186,7 +193,11 @@ begin
            boost_expires_at = case when i % 4 = 0
                                    then now() + interval '7 days'
                                    else null end,
-           must_change_password = false
+           must_change_password = false,
+           -- Fecha de ingreso escalonada: el ciclo de 30 días se ancla aquí, así
+           -- cada embajador queda en un punto distinto de su ciclo (algunos en
+           -- recta final / ventana de recompensas) para probar la gamificación.
+           created_at = now() - ((i - 1) * 7 || ' days')::interval
      where id = new_user;
 
     emba_ids := array_append(emba_ids, new_user);
@@ -316,7 +327,7 @@ begin
       wholesale_discount_pct, wholesale_discount_value, wholesale_net_total,
       wholesale_base_commission_pct, wholesale_boost_bonus_pct,
       commission_rate, commission_value,
-      cost_of_goods, gross_profit, margin, created_at
+      cost_of_goods, gross_profit, net_profit, margin, created_at
     )
     values (
       admin_id, amb_id, amount * 0.9, qty, 'Venta al por mayor',
@@ -324,22 +335,22 @@ begin
       amount,
       0.10, amount * 0.10, amount * 0.90,
       0.15, 0,
-      0.15, amount * 0.15,
-      cost_total, amount * 0.90 - cost_total, (amount * 0.90 - cost_total) / nullif(amount * 0.90, 0), sale_dt
+      0.15, amount * 0.90 * 0.15,
+      cost_total, amount * 0.90 - cost_total, (amount * 0.90 - cost_total) - (amount * 0.90 * 0.15), (amount * 0.90 - cost_total) / nullif(amount * 0.90, 0), sale_dt
     )
     returning id into new_sale;
 
     insert into public.sale_batch_consumptions (sale_id, batch_id, units, cost)
     values (new_sale, batch_with_alc[1 + (i % array_length(batch_with_alc, 1))], qty, cost_total);
 
-    -- gasto comisión vinculado a la venta
+    -- gasto comisión vinculado a la venta (sobre el neto, como el flujo real)
     insert into public.expenses (
-      created_by, category, description, amount, expense_type, source_sale_id, created_at
+      created_by, ambassador_profile_id, category, description, amount, expense_type, source_sale_id, created_at
     )
     values (
-      admin_id, 'comision',
-      'Comisión venta mayorista #' || i,
-      amount * 0.15,
+      admin_id, amb_id, 'comision_embajador',
+      'Comisión venta mayorista ' || new_sale,
+      amount * 0.90 * 0.15,
       'commission',
       new_sale,
       sale_dt
@@ -347,11 +358,11 @@ begin
 
     -- gasto descuento (contra-ingreso)
     insert into public.expenses (
-      created_by, category, description, amount, expense_type, source_sale_id, created_at
+      created_by, ambassador_profile_id, category, description, amount, expense_type, source_sale_id, created_at
     )
     values (
-      admin_id, 'descuento',
-      'Descuento cliente mayorista #' || i,
+      admin_id, amb_id, 'descuento_cliente',
+      'Descuento venta mayorista ' || new_sale,
       amount * 0.10,
       'discount',
       new_sale,
