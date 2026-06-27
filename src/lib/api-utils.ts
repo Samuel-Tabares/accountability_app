@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ProfileRow } from "./supabase/types";
 
+/**
+ * Build an absolute origin from the actual request Host header instead of
+ * `request.url`. The dev server resolves `request.url` to `localhost`, which
+ * breaks server-side redirects when the app is reached over a LAN IP or any
+ * non-localhost host (the client gets sent to its own localhost).
+ */
+export function resolveRequestOrigin(request: NextRequest): string {
+  const host = request.headers.get("host");
+  if (!host) return new URL(request.url).origin;
+  const proto = request.headers.get("x-forwarded-proto") ?? new URL(request.url).protocol.replace(":", "");
+  return `${proto}://${host}`;
+}
+
+export function requestUrl(request: NextRequest, path: string): URL {
+  return new URL(path, resolveRequestOrigin(request));
+}
+
 export function setRedirect(
   response: NextResponse,
   request: NextRequest,
@@ -8,7 +25,7 @@ export function setRedirect(
   error?: string,
   notice?: string
 ): NextResponse {
-  const target = request.headers.get("referer") ?? new URL(fallback, request.url).toString();
+  const target = request.headers.get("referer") ?? requestUrl(request, fallback).toString();
   const url = new URL(target);
   if (error) url.searchParams.set("error", error);
   if (notice) url.searchParams.set("notice", notice);

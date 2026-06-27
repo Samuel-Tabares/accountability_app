@@ -8,8 +8,15 @@ function dashboardPathForRole(role: "admin" | "embajador") {
   return role === "admin" ? "/admin" : "/embajador";
 }
 
+function requestOrigin(request: NextRequest) {
+  const host = request.headers.get("host");
+  if (!host) return new URL(request.url).origin;
+  const proto = request.headers.get("x-forwarded-proto") ?? new URL(request.url).protocol.replace(":", "");
+  return `${proto}://${host}`;
+}
+
 function withRedirect(request: NextRequest, path: string, error?: string) {
-  const url = new URL(path, request.url);
+  const url = new URL(path, requestOrigin(request));
   if (error) {
     url.searchParams.set("error", error);
   }
