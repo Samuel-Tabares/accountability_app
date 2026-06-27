@@ -413,6 +413,9 @@ button:disabled {
 .embajador-hero,
 .embajador-boost,
 .embajador-stat,
+.embajador-level,
+.embajador-recap-card,
+.embajador-history-row,
 .embajador-sale-card,
 .embajador-empty {
   background:
@@ -1379,6 +1382,27 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.embajador-meta-row {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.embajador-meta-row .embajador-code {
+  margin-top: 0;
+}
+
+.embajador-since {
+  min-width: min(100%, 200px);
+}
+
+.embajador-since strong {
+  font-size: clamp(1.1rem, 3vw, 1.6rem);
+  line-height: 1.1;
+}
+
 .embajador-profile-line,
 .embajador-sale-pills {
   display: flex;
@@ -1420,6 +1444,483 @@ button:disabled {
 
 .embajador-boost-active strong {
   color: var(--money-deep);
+}
+
+/* ── Gamificación de niveles ─────────────────────────────── */
+.embajador-level {
+  border-radius: 24px;
+  padding: 1.1rem 1.2rem;
+  display: grid;
+  gap: 1rem;
+  border-color: var(--level-accent, rgba(255, 255, 255, 0.86)) !important;
+  box-shadow: 0 18px 38px -22px var(--level-glow, rgba(0, 0, 0, 0.25));
+}
+
+.embajador-level-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.embajador-level-badge {
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.9rem;
+  border-radius: 18px;
+  background: radial-gradient(circle at 30% 25%, var(--level-glow), transparent 72%), rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--level-accent);
+  box-shadow: 0 0 24px -6px var(--level-glow);
+}
+
+.embajador-level-title {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.embajador-level-title strong {
+  font-size: 1.35rem;
+  color: var(--text-strong);
+  line-height: 1.1;
+}
+
+.embajador-level-title span {
+  font-size: 0.85rem;
+  color: var(--muted-strong);
+}
+
+.embajador-level-perk {
+  margin-left: auto;
+  text-align: right;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.embajador-level-perk span {
+  font-size: 0.78rem;
+  color: var(--muted-strong);
+}
+
+.embajador-level-perk strong {
+  font-size: 1.1rem;
+  color: var(--money-deep);
+}
+
+.embajador-progress {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.embajador-progress-bar {
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.embajador-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--level-accent), var(--money-deep));
+  box-shadow: 0 0 12px -2px var(--level-glow);
+  transition: width 0.6s ease;
+}
+
+.embajador-progress-copy {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.embajador-level-perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.embajador-recap {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.embajador-recap-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.embajador-recap-card {
+  border-radius: 20px;
+  padding: 0.95rem 1rem;
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+}
+
+.embajador-recap-card span {
+  font-size: 0.82rem;
+  color: var(--muted-strong);
+}
+
+.embajador-recap-card strong {
+  font-size: 1.3rem;
+  color: var(--text-strong);
+}
+
+.embajador-recap-card small {
+  font-size: 0.78rem;
+  color: var(--muted-strong);
+}
+
+.embajador-recap-featured {
+  background:
+    linear-gradient(135deg, rgba(94, 220, 255, 0.36), rgba(255, 217, 138, 0.5) 54%, rgba(255, 92, 168, 0.18)),
+    rgba(255, 255, 255, 0.82) !important;
+  box-shadow: var(--shadow-pop);
+}
+
+.embajador-recap-featured strong {
+  font-size: 1.55rem;
+  color: var(--money-deep);
+}
+
+.embajador-history-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.embajador-history-row {
+  border-radius: 18px;
+  padding: 0.8rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.embajador-history-month {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.embajador-history-month strong {
+  color: var(--text-strong);
+}
+
+.embajador-history-month span {
+  font-size: 0.82rem;
+  color: var(--muted-strong);
+}
+
+.embajador-history-amounts {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.embajador-history-amounts span {
+  font-size: 0.82rem;
+  color: var(--muted-strong);
+}
+
+.embajador-history-amounts strong {
+  font-size: 1.1rem;
+  color: var(--money-deep);
+}
+
+/* Card "Desde que ingresaste" — total generado de por vida (estilo glass como las demás) */
+.embajador-lifetime {
+  border-radius: 24px;
+  padding: 1.2rem 1.25rem;
+  display: grid;
+  gap: 1rem;
+  background:
+    linear-gradient(135deg, rgba(94, 220, 255, 0.36), rgba(255, 217, 138, 0.5) 54%, rgba(255, 92, 168, 0.18)),
+    rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-pop);
+  backdrop-filter: blur(14px);
+}
+
+.embajador-lifetime-glow {
+  display: none;
+}
+
+.embajador-lifetime-head {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.embajador-lifetime-total {
+  font-family: var(--font-display), var(--font-body), ui-rounded, system-ui, sans-serif;
+  font-size: clamp(2rem, 7vw, 3rem);
+  line-height: 1;
+  color: var(--money-deep);
+}
+
+.embajador-lifetime-head > span {
+  font-size: 0.86rem;
+  color: var(--muted-strong);
+}
+
+.embajador-lifetime-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.embajador-lifetime-stats > div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--line);
+}
+
+.embajador-lifetime-stats span {
+  font-size: 0.72rem;
+  color: var(--muted-strong);
+}
+
+.embajador-lifetime-stats strong {
+  font-size: 1.1rem;
+  color: var(--text-strong);
+}
+
+@media (max-width: 640px) {
+  .embajador-lifetime-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.ambassador-payouts-pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+}
+
+.embajador-paid-tag,
+.embajador-pending-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+}
+
+.embajador-paid-tag {
+  color: #0f7a3d;
+  background: rgba(52, 200, 116, 0.18);
+}
+
+.embajador-pending-tag {
+  color: #9a6a00;
+  background: rgba(255, 196, 0, 0.2);
+}
+
+/* Ciclo mensual: días restantes + nota de reseteo */
+.embajador-cycle-meta {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.embajador-cycle-days {
+  width: fit-content;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Card única de recompensas (recta final del ciclo) */
+.embajador-payout {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.2rem 1.25rem;
+  border-radius: 26px;
+  color: #fff;
+  border: 1px solid rgba(255, 209, 102, 0.65);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 92, 168, 0.55), transparent 55%),
+    linear-gradient(135deg, #ff8a4c, #ff5ca8 55%, #7b2ff7);
+  box-shadow: 0 22px 46px -24px rgba(255, 92, 168, 0.85);
+}
+
+.embajador-payout-glow {
+  position: absolute;
+  inset: -40% 40% auto -20%;
+  height: 200px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.4), transparent 70%);
+  pointer-events: none;
+}
+
+.embajador-payout-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.embajador-payout-badge {
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(6px);
+}
+
+.embajador-payout-countdown {
+  font-size: 0.8rem;
+  font-weight: 700;
+  opacity: 0.92;
+}
+
+.embajador-payout-title {
+  position: relative;
+  font-size: 1.2rem;
+  line-height: 1.15;
+}
+
+.embajador-payout-rewards {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.embajador-payout-reward {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(6px);
+}
+
+.embajador-payout-reward span {
+  font-size: 0.72rem;
+  opacity: 0.9;
+}
+
+.embajador-payout-reward strong {
+  font-size: 1.05rem;
+}
+
+.embajador-payout-cta {
+  position: relative;
+  font-size: 0.84rem;
+  opacity: 0.95;
+}
+
+@media (max-width: 640px) {
+  .embajador-payout-rewards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card de venta con boost + pill de porcentaje */
+.embajador-sale-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.embajador-boost-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  color: #6a3e00;
+  background: linear-gradient(135deg, #ffd166, #ff8a4c);
+  box-shadow: 0 4px 12px -4px rgba(255, 138, 76, 0.8);
+}
+
+.embajador-rate-pill {
+  font-weight: 700;
+  color: var(--money-deep) !important;
+  background: rgba(76, 201, 240, 0.16);
+}
+
+/* Venta con boost: mismo estilo vibrante que la card "Recta final" */
+.embajador-sale-boost {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  border-color: rgba(255, 209, 102, 0.65) !important;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 92, 168, 0.55), transparent 55%),
+    linear-gradient(135deg, #ff8a4c, #ff5ca8 55%, #7b2ff7) !important;
+  box-shadow: 0 22px 46px -24px rgba(255, 92, 168, 0.85);
+}
+
+.embajador-sale-boost::before {
+  content: "";
+  position: absolute;
+  inset: -45% 45% auto -20%;
+  height: 180px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.4), transparent 70%);
+  pointer-events: none;
+}
+
+.embajador-sale-boost > * {
+  position: relative;
+}
+
+.embajador-sale-boost:hover {
+  border-color: rgba(255, 209, 102, 0.85) !important;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 92, 168, 0.6), transparent 55%),
+    linear-gradient(135deg, #ff8a4c, #ff5ca8 55%, #7b2ff7) !important;
+}
+
+.embajador-sale-boost .embajador-sale-top strong,
+.embajador-sale-boost .embajador-sale-top span:not(.chip),
+.embajador-sale-boost p {
+  color: #fff;
+}
+
+.embajador-sale-boost .chip {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+.embajador-sale-boost .embajador-boost-tag {
+  color: #7b2ff7;
+  background: #fff;
+  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.35);
+}
+
+.embajador-sale-boost .embajador-sale-pills span {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
+}
+
+.embajador-sale-boost .embajador-rate-pill {
+  background: #fff;
+  color: #7b2ff7 !important;
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .embajador-recap-grid {
+    grid-template-columns: 1fr;
+  }
+  .embajador-level-perk {
+    margin-left: 0;
+  }
 }
 
 .embajador-stats {

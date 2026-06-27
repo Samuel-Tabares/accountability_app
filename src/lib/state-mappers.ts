@@ -1,4 +1,4 @@
-import type { Ambassador, BatchLineItem, ConsignmentClient, ConsignmentPickup, ConsignmentReactivation, ConsignmentReplenishment, Expense, InventoryReturn, ProductionBatch, Sale, SaleBatchConsumption } from "./types";
+import type { Ambassador, AmbassadorPayout, BatchLineItem, ConsignmentClient, ConsignmentPickup, ConsignmentReactivation, ConsignmentReplenishment, Expense, InventoryReturn, ProductionBatch, Sale, SaleBatchConsumption } from "./types";
 import type { ProductVariant } from "./types";
 
 type AmbassadorLike = { id: string; code: string };
@@ -178,6 +178,22 @@ export function mapApiAmbassador(row: AnyRow): Ambassador {
     boostActive: Boolean(row.boost_active),
     boostExpiresAt: row.boost_expires_at ? String(row.boost_expires_at) : undefined,
     active: row.is_active !== false,
-    notes: String(row.phone ?? "")
+    notes: String(row.phone ?? ""),
+    createdAt: row.created_at ? String(row.created_at) : undefined
+  };
+}
+
+export function mapApiPayout(row: AnyRow): AmbassadorPayout {
+  return {
+    id: String(row.id),
+    ambassadorId: String(row.ambassador_profile_id),
+    cycleIndex: Number(row.cycle_index ?? 0),
+    cycleStart: String(row.cycle_start),
+    cycleEnd: String(row.cycle_end),
+    units: Number(row.units ?? 0),
+    level: (row.level as AmbassadorPayout["level"]) ?? "nivel0",
+    baseSalary: Number(row.base_salary ?? 0),
+    commissions: Number(row.commissions ?? 0),
+    freeUnits: Number(row.free_units ?? 0)
   };
 }

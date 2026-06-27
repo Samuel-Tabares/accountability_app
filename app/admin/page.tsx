@@ -72,7 +72,8 @@ function mapAmbassador(profile: ProfileRow): Ambassador {
     boostActive: profile.boost_active ?? false,
     boostExpiresAt: profile.boost_expires_at ?? undefined,
     active: profile.is_active,
-    notes: profile.phone ?? ""
+    notes: profile.phone ?? "",
+    createdAt: profile.created_at
   };
 }
 
@@ -277,7 +278,8 @@ export default async function AdminPage({ searchParams }: Props) {
     consignmentReactivationsResult,
     inventoryReturnsResult,
     saleBatchConsumptionsResult,
-    companyInfoResult
+    companyInfoResult,
+    ambassadorPayoutsResult
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("sales").select("*").order("created_at", { ascending: false }),
@@ -292,7 +294,8 @@ export default async function AdminPage({ searchParams }: Props) {
     supabase.from("consignment_reactivations").select("*").order("created_at", { ascending: false }),
     supabase.from("inventory_returns").select("*").order("created_at", { ascending: false }),
     supabase.from("sale_batch_consumptions").select("sale_id, batch_id, units, cost"),
-    supabase.from("company_info").select("*").eq("id", "singleton").maybeSingle()
+    supabase.from("company_info").select("*").eq("id", "singleton").maybeSingle(),
+    supabase.from("ambassador_payouts").select("*").order("cycle_start", { ascending: false })
   ]);
 
   if (profilesResult.error || salesResult.error || expensesResult.error) {
@@ -328,6 +331,18 @@ export default async function AdminPage({ searchParams }: Props) {
   const initialState: AppState = {
     ...blankState,
     ambassadors: profiles.filter((profile) => profile.role === "embajador").map(mapAmbassador),
+    ambassadorPayouts: (ambassadorPayoutsResult.data ?? []).map((row) => ({
+      id: String(row.id),
+      ambassadorId: String(row.ambassador_profile_id),
+      cycleIndex: Number(row.cycle_index ?? 0),
+      cycleStart: String(row.cycle_start),
+      cycleEnd: String(row.cycle_end),
+      units: Number(row.units ?? 0),
+      level: (row.level as Ambassador["level"]) ?? "nivel0",
+      baseSalary: Number(row.base_salary ?? 0),
+      commissions: Number(row.commissions ?? 0),
+      freeUnits: Number(row.free_units ?? 0)
+    })),
     batches: batches.map((batch) => mapBatch(batch, itemsByBatch)),
     sales: salesRows.map((sale) => mapSale(sale, profilesById)),
     expenses: expenseRows.map((expense) => mapExpense(expense, profilesById)),

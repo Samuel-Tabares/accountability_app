@@ -31,6 +31,20 @@ export type Ambassador = {
   boostExpiresAt?: string;
   active: boolean;
   notes: string;
+  createdAt?: string;
+};
+
+export type AmbassadorPayout = {
+  id: string;
+  ambassadorId: string;
+  cycleIndex: number;
+  cycleStart: string;
+  cycleEnd: string;
+  units: number;
+  level: Level;
+  baseSalary: number;
+  commissions: number;
+  freeUnits: number;
 };
 
 export type BatchLineItem = {
@@ -203,6 +217,7 @@ export type SaleBatchConsumption = {
 export type AppState = {
   users: User[];
   ambassadors: Ambassador[];
+  ambassadorPayouts: AmbassadorPayout[];
   ingredientPurchases: IngredientPurchase[];
   batches: ProductionBatch[];
   sales: Sale[];
