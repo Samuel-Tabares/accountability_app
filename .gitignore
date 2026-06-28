@@ -5,6 +5,8 @@ node_modules
 *.tsbuildinfo
 .DS_Store
 supabase/.temp
+# Local, per-developer skills (machine-specific dirs + absolute symlinks)
+.claude/skills/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
