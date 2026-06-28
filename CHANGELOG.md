@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.15.0] - 2026-06-27
+
+### Added
+
+- **Gamificación del panel del embajador** — el panel read-only ahora muestra nivel con badge por
+  identidad visual (Plata/Oro/Diamante), barra de progreso al siguiente nivel, días restantes del
+  ciclo, recap del ciclo actual e historial ciclo a ciclo. Lógica en `src/lib/levels.ts`
+  (compute-on-read, sin persistencia nueva para la parte visual).
+- **Ciclo personal de 30 días** — el nivel se mide por unidades vendidas dentro de una ventana de 30
+  días anclada a la `created_at` (fecha de ingreso) de cada embajador; se reinicia a Nivel 0 cada
+  ciclo. Cada embajador tiene su propio ciclo. La fecha de ingreso se muestra en el hero.
+- **% de comisión por venta** — cada card de venta mayorista muestra su tasa real (tier de cantidad
+  20+/50+/100+ + boost). Las ventas con boost usan un estilo destacado (degradado naranja→rosa→
+  violeta), igual que la card "Recta final".
+- **Card "Recta final"** — en los últimos 5 días del ciclo (si el nivel da sueldo base), el embajador
+  ve un aviso con sus recompensas reclamables (granizados gratis + sueldo base + comisiones).
+- **Fase 2 — Liquidación de sueldo base** — al cerrar un ciclo, el admin liquida el sueldo base del
+  nivel alcanzado desde `AmbassadorsPanel` (botón por ciclo cerrado pendiente). Crea un gasto **único**
+  (`oneTime`) ligado al embajador (baja la utilidad neta) con el embajador y nivel en el título
+  (`Sueldo base {Nivel} · {Embajador}`) y registra la liquidación.
+  - Migración `0012_ambassador_payouts.sql`: tabla `ambassador_payouts` (idempotente por
+    `(ambassador_profile_id, cycle_start)`) + RLS (admin all, embajador read own).
+  - Ruta `POST /api/embajadores/liquidar`: recomputa nivel y monto server-side, solo ciclos cerrados.
+  - El historial del embajador marca cada ciclo como "Liquidado" o "Pendiente".
+- **Autoconsumo de granizados gratis** — al liquidar, los granizados gratis del nivel (5/7/10) se
+  registran automáticamente como una venta `gift` con nota "Regalo a embajador {nombre} · {nivel}",
+  siguiendo el flujo normal: consumen inventario FIFO y su costo baja la utilidad bruta.
+- **Card "Desde que ingresaste" (vista embajador)** — muestra el total generado de por vida (comisiones
+  + sueldos base) más unidades vendidas y granizados gratis acumulados, con la fecha de ingreso.
+
+### Fixed
+
+- **Redirects del servidor respetan el host real** — `src/lib/api-utils.ts` (`resolveRequestOrigin`/
+  `requestUrl`), la ruta de login y el middleware derivan el origin del header `Host` en vez de
+  `request.url` (que el dev server resuelve a `localhost`). Antes, el login desde otro dispositivo en
+  la LAN redirigía a `localhost` y fallaba.
+- **Acceso por LAN en desarrollo** — `next.config.mjs` añade `allowedDevOrigins` para que el bundle
+  cliente / HMR carguen al abrir el dev server desde una IP de red (p. ej. un celular).
+
 ## [0.14.0] - 2026-05-31
 
 ### Added

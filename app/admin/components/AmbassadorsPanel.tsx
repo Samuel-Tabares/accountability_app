@@ -5,7 +5,8 @@ import { Plus } from "lucide-react";
 import { formatCurrency, formatDate, isBoostActive } from "@/src/lib/ledger";
 import type { Ambassador, AppState, CalculatedState } from "@/src/lib/types";
 import type { DashboardUser } from "./ui";
-import { mapApiAmbassador } from "@/src/lib/state-mappers";
+import { mapApiAmbassador, mapApiExpense, mapApiPayout, mapApiSale, mapApiSaleBatchConsumption } from "@/src/lib/state-mappers";
+import { closedCycles } from "@/src/lib/levels";
 import { Button, Field, Input, postForm, saleRealTotal, Section, Select } from "./ui";
 
 type AmbassadorDraft = Partial<Ambassador> & {
@@ -56,11 +57,60 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onStateUp
           const revenue = ambassadorSales.reduce((sum, sale) => sum + saleRealTotal(sale), 0);
           const commission = ambassadorSales.reduce((sum, sale) => sum + sale.commissionValue, 0);
           const clientSavings = ambassadorSales.reduce((sum, sale) => sum + sale.clientSavings, 0);
-          return { ...ambassador, revenue, commission, clientSavings, salesCount: ambassadorSales.length };
+
+          const paidStarts = new Set(
+            state.ambassadorPayouts
+              .filter((payout) => payout.ambassadorId === ambassador.id)
+              .map((payout) => new Date(payout.cycleStart).getTime())
+          );
+          const wholesale = ambassadorSales
+            .filter((sale) => sale.saleType === "wholesale")
+            .map((sale) => ({ created_at: sale.createdAt, quantity: sale.quantity }));
+          const pendingCycles = ambassador.createdAt
+            ? closedCycles(wholesale, new Date(ambassador.createdAt)).filter(
+                (cycle) => cycle.level.baseSalary > 0 && !paidStarts.has(cycle.start.getTime())
+              )
+            : [];
+
+          return { ...ambassador, revenue, commission, clientSavings, salesCount: ambassadorSales.length, pendingCycles };
         })
         .sort((a, b) => b.revenue - a.revenue),
-    [state.ambassadors, ledger.sales]
+    [state.ambassadors, state.ambassadorPayouts, ledger.sales]
   );
+
+  async function liquidateCycle(ambassadorId: string, cycleStart: string) {
+    try {
+      const payload = await postForm("/api/embajadores/liquidar", {
+        profile_id: ambassadorId,
+        cycle_start: cycleStart
+      });
+      if (payload && typeof payload === "object" && "payout" in payload && "expense" in payload) {
+        const p = payload as Record<string, unknown>;
+        const newPayout = mapApiPayout(p.payout as Record<string, unknown>);
+        const newExpense = mapApiExpense(p.expense as Record<string, unknown>, state.ambassadors);
+        const giftSale = p.giftSale
+          ? mapApiSale(p.giftSale as Record<string, unknown>, state.ambassadors)
+          : null;
+        const giftConsumptions = Array.isArray(p.giftConsumptions)
+          ? (p.giftConsumptions as Record<string, unknown>[]).map(mapApiSaleBatchConsumption)
+          : [];
+        onStateUpdate((prev) => ({
+          ...prev,
+          ambassadorPayouts: [newPayout, ...prev.ambassadorPayouts],
+          expenses: [newExpense, ...prev.expenses],
+          sales: giftSale ? [giftSale, ...prev.sales] : prev.sales,
+          saleBatchConsumptions: [...giftConsumptions, ...prev.saleBatchConsumptions]
+        }));
+        onMessage(
+          giftSale
+            ? `Liquidado: sueldo base + ${giftSale.quantity} granizados de regalo.`
+            : "Sueldo base liquidado y registrado como gasto."
+        );
+      }
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "No se pudo liquidar el ciclo.");
+    }
+  }
 
   function loadAmbassadorForEdit(ambassadorId: string) {
     const ambassador = state.ambassadors.find((entry) => entry.id === ambassadorId);
@@ -294,6 +344,18 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onStateUp
                       </Button>
                     </div>
                   </div>
+                  {ambassador.pendingCycles.length > 0 ? (
+                    <div className="ambassador-row-line ambassador-payouts-pending">
+                      {ambassador.pendingCycles.map((cycle) => (
+                        <Button
+                          key={cycle.start.toISOString()}
+                          onClick={() => liquidateCycle(ambassador.id, cycle.start.toISOString())}
+                        >
+                          Liquidar {cycle.label} · {cycle.level.label} · {formatCurrency(cycle.level.baseSalary)}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
               );
             })}

@@ -5,6 +5,7 @@ import { createRateLimitHtmlResponse, rateLimitLogin } from "@/src/lib/rate-limi
 import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
 import { createSupabaseRouteClient } from "@/src/lib/supabase/route";
 import { setAppSessionCookie } from "@/src/lib/app-session-cookie";
+import { requestUrl } from "@/src/lib/api-utils";
 
 function wantsJson(request: NextRequest) {
   return request.headers.get("accept")?.includes("application/json") ?? false;
@@ -18,7 +19,7 @@ function jsonResponse(body: unknown, status: number, headers?: Record<string, st
 }
 
 function redirectResponse(request: NextRequest, path: string, error?: string, extras?: Record<string, string>) {
-  const url = new URL(path, request.url);
+  const url = requestUrl(request, path);
   if (error) {
     url.searchParams.set("error", error);
   }

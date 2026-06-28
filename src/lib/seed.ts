@@ -3,6 +3,7 @@ import type { AppState } from "./types";
 export const blankState: AppState = {
   users: [],
   ambassadors: [],
+  ambassadorPayouts: [],
   ingredientPurchases: [],
   batches: [],
   sales: [],
