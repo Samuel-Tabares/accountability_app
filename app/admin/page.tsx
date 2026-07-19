@@ -53,6 +53,7 @@ function adminMessage(error?: string, notice?: string) {
   if (error === "missing_profile") return "Selecciona un perfil válido.";
   if (error === "invalid_sale") return "Revisa la venta antes de guardarla.";
   if (error === "sale_failed") return "No se pudo guardar la venta.";
+  if (error === "insufficient_stock") return "Stock insuficiente para esa venta. Registra producción antes de vender.";
   if (error === "invalid_expense") return "Revisa el gasto antes de guardarlo.";
   if (error === "expense_failed") return "No se pudo guardar el gasto.";
   if (notice === "embajador_created") return "Embajador creado correctamente.";

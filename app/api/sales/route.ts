@@ -139,6 +139,16 @@ export async function POST(request: NextRequest) {
   const commissionRate = wholesaleBaseCommissionPct + wholesaleBoostBonusPct;
   const commissionValue = saleType === "wholesale" && hasAmbassador ? wholesaleNetTotal * commissionRate : 0;
   const fifo = await resolveFifoCost(auth.adminClient, resolvedVariant, unitsConsumed(saleType, quantity));
+  // Guardia de sobreventa: sin esto la venta se registraba aunque el stock no
+  // alcanzara, dejando unidades con costo $0 y sobrestimando la utilidad.
+  if (!fifo.sufficient) {
+    const variantLabel = resolvedVariant === "withAlcohol" ? "con licor" : "sin licor";
+    const message = `Stock insuficiente: hay ${fifo.covered} unidades ${variantLabel} disponibles y la venta requiere ${fifo.requested}. Registra producción antes de vender.`;
+    if (jsonMode) {
+      return jsonResponse(false, message, 409);
+    }
+    return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "insufficient_stock");
+  }
   const grossProfit = wholesaleNetTotal - fifo.totalCost;
   const netProfit = grossProfit - commissionValue;
   const margin = wholesaleNetTotal > 0 ? netProfit / wholesaleNetTotal : 0;

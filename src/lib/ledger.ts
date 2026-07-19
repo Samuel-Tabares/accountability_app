@@ -262,11 +262,18 @@ function resolveStoredWholesaleSnapshot(
       ? settings.boostBonusPct
       : 0);
   const commissionRate = sale.commissionRate ?? wholesaleBaseCommissionPct + wholesaleBoostBonusPct;
-  const commissionValue =
-    hasWholesaleAmbassador && ambassador
-      ? wholesaleNetTotal * commissionRate
-      : hasWholesaleAmbassador
-        ? sale.commissionValue ?? 0
+  // La comisión es dinero ya causado al embajador: se persiste una vez en la venta
+  // (snapshot) y se refleja en el gasto tipo `commission`. Para mostrarla usamos el
+  // snapshot inmutable, no un recálculo. Recalcular aquí mostraba $0 cuando el
+  // embajador ya no resuelve (borrado/renombrado) aunque el gasto siga registrado.
+  // El recálculo sólo queda como respaldo para ventas legacy sin snapshot.
+  const storedCommissionValue = sale.commissionValue ?? 0;
+  const commissionValue = !hasWholesaleAmbassador
+    ? 0
+    : storedCommissionValue > 0
+      ? storedCommissionValue
+      : ambassador
+        ? wholesaleNetTotal * commissionRate
         : 0;
   const clientSavings = hasWholesaleAmbassador ? wholesaleDiscountValue : 0;
 

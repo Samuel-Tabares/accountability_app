@@ -3,7 +3,18 @@ import type { ProductVariant } from "@/src/lib/types";
 import type { ProductionBatchRow } from "@/src/lib/supabase/types";
 
 export type FifoRow = { batch_id: string; units: number; cost: number };
-export type FifoResult = { totalCost: number; rows: FifoRow[] };
+export type FifoResult = {
+  totalCost: number;
+  rows: FifoRow[];
+  /** Units requested to consume. */
+  requested: number;
+  /** Units actually covered by available stock (rows sum). */
+  covered: number;
+  /** Units that could NOT be covered (requested − covered). > 0 means overselling. */
+  shortfall: number;
+  /** True when stock fully covered the requested units. */
+  sufficient: boolean;
+};
 
 export async function resolveFifoCost(
   adminClient: SupabaseClient,
@@ -11,7 +22,7 @@ export async function resolveFifoCost(
   units: number
 ): Promise<FifoResult> {
   if (units <= 0) {
-    return { totalCost: 0, rows: [] };
+    return { totalCost: 0, rows: [], requested: units, covered: 0, shortfall: 0, sufficient: true };
   }
 
   const [batchesResult, consumptionsResult, returnsResult] = await Promise.all([
@@ -60,5 +71,13 @@ export async function resolveFifoCost(
     remaining -= take;
   }
 
-  return { totalCost, rows };
+  const covered = units - remaining;
+  return {
+    totalCost,
+    rows,
+    requested: units,
+    covered,
+    shortfall: Math.max(0, remaining),
+    sufficient: remaining <= 0
+  };
 }

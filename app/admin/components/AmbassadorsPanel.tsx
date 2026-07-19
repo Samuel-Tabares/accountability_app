@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, isBoostActive } from "@/src/lib/ledger";
 import type { Ambassador, AppState, CalculatedState } from "@/src/lib/types";
 import type { DashboardUser } from "./ui";
 import { mapApiAmbassador, mapApiExpense, mapApiPayout, mapApiSale, mapApiSaleBatchConsumption } from "@/src/lib/state-mappers";
-import { closedCycles } from "@/src/lib/levels";
+import { closedCycles, computeLevel, currentCycleUnits } from "@/src/lib/levels";
 import { Button, Field, Input, postForm, saleRealTotal, Section, Select } from "./ui";
 
 type AmbassadorDraft = Partial<Ambassador> & {
@@ -19,16 +19,6 @@ type CreatedCredentials = {
   password: string;
   reason: "created" | "reset";
 } | null;
-
-function levelLabel(level?: Ambassador["level"]) {
-  const labels: Record<NonNullable<Ambassador["level"]>, string> = {
-    nivel0: "Nivel 0",
-    plata: "Plata",
-    oro: "Oro",
-    diamante: "Diamante"
-  };
-  return level ? labels[level] : "N/A";
-}
 
 type AmbassadorsPanelProps = {
   state: AppState;
@@ -72,7 +62,13 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onStateUp
               )
             : [];
 
-          return { ...ambassador, revenue, commission, clientSavings, salesCount: ambassadorSales.length, pendingCycles };
+          // Nivel real del ciclo vigente (compute-on-read), no la columna
+          // `profiles.level` que queda congelada en "nivel0" tras la creación.
+          const currentLevelLabel = ambassador.createdAt
+            ? computeLevel(currentCycleUnits(wholesale, new Date(ambassador.createdAt))).label
+            : "Nivel 0";
+
+          return { ...ambassador, revenue, commission, clientSavings, salesCount: ambassadorSales.length, pendingCycles, currentLevelLabel };
         })
         .sort((a, b) => b.revenue - a.revenue),
     [state.ambassadors, state.ambassadorPayouts, ledger.sales]
@@ -309,7 +305,7 @@ export default function AmbassadorsPanel({ state, ledger, currentUser, onStateUp
                     <div className="ambassador-identity-meta">
                       <span>{ambassador.code}</span>
                       <span aria-hidden="true">·</span>
-                      <span>{levelLabel(ambassador.level)}</span>
+                      <span>{ambassador.currentLevelLabel}</span>
                     </div>
                   </div>
                   <div className="ambassador-row-line ambassador-row-metrics">
