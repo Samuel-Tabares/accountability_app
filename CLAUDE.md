@@ -126,6 +126,7 @@ Run in order with `supabase db reset` locally or apply manually in Supabase SQL 
 8. `0010_replenishment_previous_base.sql` — previous base per variant (reposición vs ampliación)
 9. `0011_wholesale_client_fields.sql` — `client_name`, `client_address`, `client_phone`, `delivery_fee` on `sales`
 10. `0012_ambassador_payouts.sql` — base-salary liquidation per closed 30-day cycle; idempotent on `(ambassador_profile_id, cycle_start)`
+11. `0013_perf_indexes.sql` — non-destructive performance indexes on hot query paths (sales by ambassador/type/date, expenses by ambassador, consumptions by sale, returns by client/variant)
 
 ## Workflow rules
 

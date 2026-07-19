@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.15.1] - 2026-07-19
+
+Auditoría técnica del money-path (ver `TECHNICAL_AUDIT.md`). Correcciones de correctitud sin
+migración; el endurecimiento atómico de FIFO (#3) queda pendiente de decisión y validación en staging.
+
+### Fixed
+
+- **Sobreventa silenciosa de inventario (#1)** — `resolveFifoCost` ahora reporta cobertura
+  (`covered`/`shortfall`/`sufficient`) y `POST /api/sales` rechaza la venta (409) cuando el stock del
+  variante no alcanza, con mensaje del disponible real. Antes la venta se registraba igual, dejando
+  unidades con costo $0 y sobrestimando utilidad bruta/neta.
+- **Nivel de embajador desactualizado en el panel admin (#2)** — `AmbassadorsPanel` calcula el nivel
+  del ciclo vigente (compute-on-read, igual que el panel del embajador) en lugar de leer la columna
+  `profiles.level`, que quedaba congelada en "Nivel 0" tras la creación. La columna almacenada deja de
+  usarse para mostrar el nivel.
+- **Comisión mostrada por recálculo en vez del snapshot inmutable (#5)** — el ledger muestra la
+  comisión persistida en la venta (espejo del gasto tipo `commission`) en vez de recalcularla en cada
+  render. Antes, si un embajador con ventas se borraba o renombraba, la fila mostraba $0 de comisión
+  aunque el gasto siguiera registrado. No cambia ningún total.
+
+### Rendimiento
+
+- **Índices en rutas calientes (#4)** — migración `0013_perf_indexes.sql` añade índices en
+  `sales (ambassador_profile_id, sale_type)`, `sales (created_at)`, `expenses (ambassador_profile_id)`,
+  `sale_batch_consumptions (sale_id)` e `inventory_returns (source_client_id, variant)`. Aceleran la
+  liquidación, el panel del embajador y la carga del dashboard. No destructiva e idempotente.
+- **Cálculo de stock en consignación paralelizado (#4)** — `computeAllClientsStockCogs` y
+  `computeClientBatchOutstanding` (`src/lib/consignment-traceability.ts`) resuelven sus consultas
+  independientes con `Promise.all` en vez de en serie. Antes eran ~6 round-trips secuenciales por
+  cliente×variante, en serie entre clientes (el N+1 que hacía lenta la carga del admin). Mismo
+  resultado, mucha menos latencia.
+
+### Nota de auditoría
+
+- La condición de carrera de FIFO (#3, consumo lee-y-luego-escribe sin lock) queda **diferida**: hoy
+  la app es de un solo escritor (el admin registra ventas en serie), así que no aplica. Se convierte en
+  requisito cuando `trabix-bot` escriba ventas en esta misma BD — ahí el consumo FIFO debe volverse una
+  función atómica de Postgres. Detalle completo en `TECHNICAL_AUDIT.md`.
+
 ## [0.15.0] - 2026-06-27
 
 ### Added
