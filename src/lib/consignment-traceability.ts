@@ -25,34 +25,45 @@ export async function computeClientBatchOutstanding(
   //    - Antiguas sales (pre-migración): usar initial_sale_id_* del cliente
   //    - Sales de reposiciones: de consignment_replenishments
 
-  const { data: clientRow } = await admin
-    .from("consignment_clients")
-    .select("initial_sale_id_with_alcohol, initial_sale_id_without_alcohol, base_quantity_with_alcohol, base_quantity_without_alcohol")
-    .eq("id", clientId)
-    .single();
+  const replenishmentSaleField =
+    variant === "withAlcohol" ? "sale_id_with_alcohol" : "sale_id_without_alcohol";
+
+  // Estas 4 consultas son independientes entre sí: antes eran 4 round-trips
+  // secuenciales por cliente×variante (el cuello de botella N+1 del dashboard).
+  const [clientRowRes, newSalesRes, replenishmentsRes, returnsRes] = await Promise.all([
+    admin
+      .from("consignment_clients")
+      .select("initial_sale_id_with_alcohol, initial_sale_id_without_alcohol, base_quantity_with_alcohol, base_quantity_without_alcohol")
+      .eq("id", clientId)
+      .single(),
+    admin
+      .from("sales")
+      .select("id, wholesale_variant, quantity, created_at")
+      .eq("consignment_client_id", clientId)
+      .eq("sale_type", "consignment")
+      .eq("wholesale_variant", variant)
+      .gt("quantity", 0),
+    admin
+      .from("consignment_replenishments")
+      .select(replenishmentSaleField)
+      .eq("client_id", clientId)
+      .not(replenishmentSaleField, "is", null),
+    admin
+      .from("inventory_returns")
+      .select("batch_id, units")
+      .eq("source_client_id", clientId)
+      .eq("variant", variant)
+  ]);
+
+  const clientRow = clientRowRes.data;
+  const newSalesData = newSalesRes.data;
+  const replenishmentsData = replenishmentsRes.data;
+  const returnsData = returnsRes.data;
 
   const legacyInitialSaleId =
     variant === "withAlcohol"
       ? clientRow?.initial_sale_id_with_alcohol
       : clientRow?.initial_sale_id_without_alcohol;
-
-  // Buscar sales nuevas por consignment_client_id
-  const { data: newSalesData } = await admin
-    .from("sales")
-    .select("id, wholesale_variant, quantity, created_at")
-    .eq("consignment_client_id", clientId)
-    .eq("sale_type", "consignment")
-    .eq("wholesale_variant", variant)
-    .gt("quantity", 0);
-
-  // Buscar sale_ids de reposiciones para este cliente
-  const replenishmentSaleField =
-    variant === "withAlcohol" ? "sale_id_with_alcohol" : "sale_id_without_alcohol";
-  const { data: replenishmentsData } = await admin
-    .from("consignment_replenishments")
-    .select(replenishmentSaleField)
-    .eq("client_id", clientId)
-    .not(replenishmentSaleField, "is", null);
 
   const replenishmentSaleIds = (replenishmentsData ?? [])
     .map((r) => (r as Record<string, unknown>)[replenishmentSaleField])
@@ -82,13 +93,8 @@ export async function computeClientBatchOutstanding(
   }
 
   // 3. Subtract previous returns (pickups already executed for this client)
-  const { data: returns } = await admin
-    .from("inventory_returns")
-    .select("batch_id, units")
-    .eq("source_client_id", clientId)
-    .eq("variant", variant);
-
-  for (const row of returns ?? []) {
+  //    `returnsData` ya viene de la consulta paralela de arriba.
+  for (const row of returnsData ?? []) {
     if (!row.batch_id) continue;
     const current = deliveredByBatch.get(row.batch_id) ?? 0;
     deliveredByBatch.set(row.batch_id, Math.max(0, current - Number(row.units)));
@@ -188,21 +194,24 @@ export async function computeAllClientsStockCogs(
     unitCostByBatch.set(b.id, Number(b.total_cost) / produced);
   }
 
-  let total = 0;
-  const variants: ProductVariant[] = ["withAlcohol", "withoutAlcohol"];
+  // Sólo los pares cliente×variante con base > 0 requieren cálculo. Se resuelven
+  // en paralelo en vez de secuencialmente (antes: N clientes × 2 variantes en serie).
+  const pending: Array<Promise<BatchOutstanding[]>> = [];
   for (const client of clients) {
     const baseWith = client.base_quantity_with_alcohol;
     const baseWithout = client.base_quantity_without_alcohol;
     if (baseWith <= 0 && baseWithout <= 0) continue;
 
-    for (const variant of variants) {
-      const base = variant === "withAlcohol" ? baseWith : baseWithout;
-      if (base <= 0) continue;
-      const outstanding = await computeClientBatchOutstanding(admin, client.id, variant);
-      for (const out of outstanding) {
-        const unitCost = unitCostByBatch.get(out.batchId) ?? 0;
-        total += out.units * unitCost;
-      }
+    if (baseWith > 0) pending.push(computeClientBatchOutstanding(admin, client.id, "withAlcohol"));
+    if (baseWithout > 0) pending.push(computeClientBatchOutstanding(admin, client.id, "withoutAlcohol"));
+  }
+
+  const results = await Promise.all(pending);
+  let total = 0;
+  for (const outstanding of results) {
+    for (const out of outstanding) {
+      const unitCost = unitCostByBatch.get(out.batchId) ?? 0;
+      total += out.units * unitCost;
     }
   }
   return total;
