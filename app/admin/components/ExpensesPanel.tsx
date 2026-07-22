@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { formatCurrency, formatDate, summarizeExpenses } from "@/src/lib/ledger";
-import type { AppState, Expense } from "@/src/lib/types";
+import { formatCurrency, formatDate, resolveActiveBatch, summarizeExpenses } from "@/src/lib/ledger";
+import type { AppState, CalculatedState, Expense } from "@/src/lib/types";
 import { mapApiExpense } from "@/src/lib/state-mappers";
 import { Button, Field, Input, postForm, Section, Select } from "./ui";
 
@@ -11,8 +11,13 @@ const emptyExpense = {
   category: "logistica",
   description: "",
   amount: 0,
-  type: "monthly" as "monthly" | "oneTime"
+  type: "monthly" as "monthly" | "oneTime",
+  batchId: ""
 };
+
+function variantLabel(variant: "withAlcohol" | "withoutAlcohol") {
+  return variant === "withAlcohol" ? "con licor" : "sin licor";
+}
 
 function expenseTypeLabel(expense: Expense) {
   if (expense.type === "commission") return "comision";
@@ -29,13 +34,19 @@ function formatExpenseCategory(category: string) {
 
 type ExpensesPanelProps = {
   state: AppState;
+  ledger: CalculatedState;
   expensesSummary: ReturnType<typeof summarizeExpenses>;
   onStateUpdate: (updater: (prev: AppState) => AppState) => void;
   onMessage: (msg: string) => void;
 };
 
-export default function ExpensesPanel({ state, expensesSummary, onStateUpdate, onMessage }: ExpensesPanelProps) {
+export default function ExpensesPanel({ state, ledger, expensesSummary, onStateUpdate, onMessage }: ExpensesPanelProps) {
   const [expenseForm, setExpenseForm] = useState(emptyExpense);
+  const activeBatch = resolveActiveBatch(ledger.batches);
+  const batchLabel = (batchId?: string) => {
+    const batch = ledger.batches.find((b) => b.id === batchId);
+    return batch ? `${batch.label} · ${variantLabel(batch.variant)}` : undefined;
+  };
 
   async function saveExpense() {
     if (!expenseForm.description.trim()) return;
@@ -45,7 +56,8 @@ export default function ExpensesPanel({ state, expensesSummary, onStateUpdate, o
         category: expenseForm.category.trim(),
         description: expenseForm.description.trim(),
         amount: expenseForm.amount,
-        expense_type: expenseForm.type
+        expense_type: expenseForm.type,
+        batch_id: expenseForm.batchId || undefined
       });
 
       if (payload && typeof payload === "object" && "expense" in payload) {
@@ -109,6 +121,27 @@ export default function ExpensesPanel({ state, expensesSummary, onStateUpdate, o
                 }
               />
             </Field>
+            <Field
+              label="Lote"
+              hint={activeBatch ? `Activo: ${batchLabel(activeBatch.id)}` : "Sin lotes"}
+            >
+              <Select
+                value={expenseForm.batchId}
+                onChange={(event) => setExpenseForm((prev) => ({ ...prev, batchId: event.target.value }))}
+              >
+                <option value="">
+                  {activeBatch ? `Lote activo (${batchLabel(activeBatch.id)})` : "Sin lote activo"}
+                </option>
+                {ledger.batches
+                  .slice()
+                  .reverse()
+                  .map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      {batch.label} · {variantLabel(batch.variant)} · {batch.unitsRemaining} disp.
+                    </option>
+                  ))}
+              </Select>
+            </Field>
           </div>
           <div className="actions">
             <Button onClick={saveExpense}>
@@ -149,6 +182,7 @@ export default function ExpensesPanel({ state, expensesSummary, onStateUpdate, o
                     </strong>
                     <span>
                       {expense.description} · {expenseTypeLabel(expense)} · {formatDate(expense.createdAt)}
+                      {batchLabel(expense.batchId) ? ` · ${batchLabel(expense.batchId)}` : ""}
                     </span>
                   </div>
                   <div className="row-meta">

@@ -33,6 +33,7 @@ export const blankState: AppState = {
   inventoryReturns: [],
   saleBatchConsumptions: [],
   consignmentStockCogs: 0,
+  consignmentStockByBatch: {},
   companyInfo: {
     legalName: "TRABIX GRANIZADOS S.A.S.",
     nit: "109,245,650-1",

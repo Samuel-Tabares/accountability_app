@@ -185,6 +185,7 @@ export type Database = {
           amount: number;
           expense_type: ExpenseType;
           source_sale_id: string | null;
+          batch_id: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["expenses"]["Row"]> & {
           created_by: string;
@@ -296,6 +297,7 @@ export type Database = {
           batch_id: string | null;
           units: number;
           cost: number;
+          consumes_stock: boolean;
         };
         Insert: Partial<Database["public"]["Tables"]["sale_batch_consumptions"]["Row"]> & {
           sale_id: string;

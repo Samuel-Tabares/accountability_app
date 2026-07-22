@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.16.0] - 2026-07-21
+
+Trazabilidad de utilidades por mes y por lote de producción, con desglose por embajador y por
+consignación en cada uno. Migración `0014_batch_reporting.sql`.
+
+### Added
+
+- **Pestaña "Reportes"** (`ReportsPanel`) — dos vistas, Por mes y Por lote, con los mismos KPIs del
+  dashboard principal (inversión, ingresos, descuentos, costo de producción, utilidad bruta/neta,
+  comisiones) rebanados por periodo o por lote, más desglose por embajador y por cliente de
+  consignación dentro de cada uno. Los KPIs del hero global no cambian — siguen siendo agregados
+  totales; para ver un mes o lote específico se entra a este reporte. `src/lib/reports.ts`
+  (`computeMonthlyReports`, `computeBatchReports`) hace el cálculo compute-on-read, sin nuevas
+  tablas de agregación.
+- **`expenses.batch_id`** — todo gasto manual (incluyendo el sueldo base liquidado a un embajador)
+  se liga al lote activo: el más viejo, entre ambas variantes, que aún tenga stock — de ahí entra el
+  dinero, de ahí sale el gasto. Snapshot al crear el gasto, con opción de override manual en
+  `ExpensesPanel`. Gastos históricos quedan sin lote (se ven en el reporte mensual, no en el de lote).
+- Cuando una venta consumió unidades de más de un lote (multi-lotaje), cada reporte por lote reparte
+  ingresos, descuentos y comisiones proporcional a las unidades que salieron de cada lote — la suma
+  de todos los lotes cuadra exacto con los totales globales del dashboard.
+
+### Fixed
+
+- **Cobro de faltantes en recogida de consignación sin lote de origen** — esa venta (`consumeStock:
+  false` en `createConsignmentSale`) no dejaba ningún registro de a qué lote pertenecía, así que no
+  podía atribuirse a un reporte por lote. Se agrega `sale_batch_consumptions.consumes_stock`
+  (default `true`, sin cambio de comportamiento existente): las filas de este caso se insertan con
+  `consumes_stock=false`, que sólo sirve para atribuir la venta a un lote en reportes — no resta
+  stock físico (ya se había descontado en la entrega original).
+
 ## [0.15.1] - 2026-07-19
 
 Auditoría técnica del money-path (ver `TECHNICAL_AUDIT.md`). Correcciones de correctitud sin

@@ -121,6 +121,7 @@ export type Expense = {
   sourceSaleId?: string;
   ambassadorId?: string;
   ambassadorCode?: string;
+  batchId?: string;
 };
 
 export type ConsignmentClient = {
@@ -212,6 +213,14 @@ export type SaleBatchConsumption = {
   batchId: string | null;
   units: number;
   cost: number;
+  /** false = atribución sólo-reporte (no descuenta stock físico). Ver migración 0014. */
+  consumesStock: boolean;
+};
+
+/** Stock físicamente en clientes de consignación, agrupado por lote de origen. */
+export type BatchConsignmentStock = {
+  units: number;
+  cogs: number;
 };
 
 export type AppState = {
@@ -230,6 +239,7 @@ export type AppState = {
   inventoryReturns: InventoryReturn[];
   saleBatchConsumptions: SaleBatchConsumption[];
   consignmentStockCogs: number;
+  consignmentStockByBatch: Record<string, BatchConsignmentStock>;
   companyInfo: CompanyInfo;
 };
 

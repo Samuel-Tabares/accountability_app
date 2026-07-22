@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRouteRole } from "@/src/lib/route-auth";
 import { jsonResponse, setRedirect, wantsJson } from "@/src/lib/api-utils";
 import { closedCycles } from "@/src/lib/levels";
-import { resolveFifoCost } from "@/src/lib/fifo";
+import { resolveActiveProductionBatch, resolveFifoCost } from "@/src/lib/fifo";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
   }, 0);
 
   const embajadorName = profile.full_name ?? "embajador";
+  const activeBatch = await resolveActiveProductionBatch(auth.adminClient);
   const { data: expense, error: expenseError } = await auth.adminClient
     .from("expenses")
     .insert({
@@ -68,7 +69,8 @@ export async function POST(request: NextRequest) {
       category: "sueldo_base",
       description: `Sueldo base ${target.level.label} · ${embajadorName}`,
       amount: target.level.baseSalary,
-      expense_type: "oneTime"
+      expense_type: "oneTime",
+      batch_id: activeBatch?.id ?? null
     })
     .select("*")
     .single();

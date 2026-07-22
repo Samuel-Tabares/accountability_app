@@ -21,8 +21,9 @@ import ExpensesPanel from "./components/ExpensesPanel";
 import AmbassadorsPanel from "./components/AmbassadorsPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import ConsignacionesPanel from "./components/ConsignacionesPanel";
+import ReportsPanel from "./components/ReportsPanel";
 
-type ActivePanel = "sales" | "production" | "expenses" | "ambassadors" | "settings" | "consignaciones";
+type ActivePanel = "sales" | "production" | "expenses" | "ambassadors" | "settings" | "consignaciones" | "reports";
 
 type AdminDashboardProps = {
   initialState: AppState;
@@ -101,6 +102,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
     { key: "expenses", label: "Gastos manuales" },
     { key: "ambassadors", label: "Embajadores" },
     { key: "consignaciones", label: "Consignaciones" },
+    { key: "reports", label: "Reportes" },
     { key: "settings", label: "Configuración" }
   ];
 
@@ -257,6 +259,7 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
         {panel === "expenses" ? (
           <ExpensesPanel
             state={state}
+            ledger={ledger}
             expensesSummary={expensesSummary}
             onStateUpdate={handleStateUpdate}
             onMessage={showMessage}
@@ -291,6 +294,8 @@ export default function AdminDashboard({ initialState, currentUser, initialMessa
             onMessage={showMessage}
           />
         ) : null}
+
+        {panel === "reports" ? <ReportsPanel state={state} ledger={ledger} /> : null}
 
         <section className="footer-note">
           <div className="footer-note-header">

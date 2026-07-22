@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveFifoCost } from "@/src/lib/fifo";
+import { resolveFifoCost, type FifoRow } from "@/src/lib/fifo";
 import type { ProductVariant } from "@/src/lib/types";
 
 // Reintenta una op una sola vez tras una pausa corta. Reduce el riesgo de
@@ -44,11 +44,13 @@ export async function validateStockAvailable(
 export type CreateConsignmentSaleOptions = {
   clientId?: string | null;
   consumeStock?: boolean;
-  // Cuando consumeStock=false (cobro de faltantes en recogida o reposición),
-  // permite registrar el cost_of_goods extraído del outstanding del cliente
-  // sin volver a consumir lotes. Los rows NO se insertan en
-  // sale_batch_consumptions (evita doble FIFO).
-  precomputedCost?: { totalCost: number };
+  // Cuando consumeStock=false (cobro de faltantes en recogida), permite registrar
+  // el cost_of_goods extraído del outstanding del cliente sin volver a consumir
+  // lotes. `rows` (de `extractCostFromOutstanding`) sí se insertan en
+  // sale_batch_consumptions, pero marcadas `consumes_stock=false`: no restan
+  // disponibilidad (el stock ya se descontó en la entrega original) — sólo
+  // permiten atribuir esta venta a un lote en los reportes por lote/mes.
+  precomputedCost?: { totalCost: number; rows?: FifoRow[] };
 };
 
 // Creates a sale row of type 'consignment'.
@@ -74,9 +76,9 @@ export async function createConsignmentSale(
     return { saleId: null, error: null };
   }
 
-  const fifo = consumeStock && quantity > 0
+  const fifo: { totalCost: number; rows: FifoRow[] } = consumeStock && quantity > 0
     ? await resolveFifoCost(adminClient, variant, quantity)
-    : { totalCost: options.precomputedCost?.totalCost ?? 0, rows: [] };
+    : { totalCost: options.precomputedCost?.totalCost ?? 0, rows: options.precomputedCost?.rows ?? [] };
 
   // Bug 8: resolveFifoCost retorna parcial silenciosamente si no hay stock.
   // Si pidieron consumir stock y no alcanza, abortar antes de crear sale inconsistente.
@@ -122,7 +124,8 @@ export async function createConsignmentSale(
         sale_id: sale.id,
         batch_id: row.batch_id,
         units: row.units,
-        cost: row.cost
+        cost: row.cost,
+        consumes_stock: consumeStock
       }))
     );
 

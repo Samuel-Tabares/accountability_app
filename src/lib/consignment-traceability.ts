@@ -81,10 +81,13 @@ export async function computeClientBatchOutstanding(
   }
 
   // 2. Batch consumptions linked to those sales → delivered-by-batch
+  // consumes_stock=true only: atribuciones de sólo-reporte (cobro de faltantes)
+  // no representan unidades entregadas físicamente al cliente.
   const { data: consumptions } = await admin
     .from("sale_batch_consumptions")
     .select("batch_id, units")
-    .in("sale_id", saleIds);
+    .in("sale_id", saleIds)
+    .eq("consumes_stock", true);
 
   const deliveredByBatch = new Map<string, number>();
   for (const row of consumptions ?? []) {
@@ -180,14 +183,22 @@ export async function extractCostFromOutstanding(
   return { totalCost, rows };
 }
 
-// Suma el costo (FIFO unit cost por lote) del stock que ACTUALMENTE está
-// físicamente en clientes de consignación. Se usa server-side en admin/page.tsx
-// para poblar `consignmentStockCogs` en el estado del dashboard.
-export async function computeAllClientsStockCogs(
+export type BatchStockEntry = { units: number; cogs: number };
+export type ConsignmentStockBreakdown = {
+  total: number;
+  byBatch: Map<string, BatchStockEntry>;
+};
+
+// Calcula el stock que ACTUALMENTE está físicamente en clientes de consignación:
+// el total (FIFO unit cost, para `consignmentStockCogs` global) y el desglose
+// por lote (unidades + costo, para el reporte por lote — sin esto el COGS de un
+// lote no puede excluir lo que está "de tránsito" en un cliente en vez de vendido).
+// Se usa server-side en admin/page.tsx para poblar el estado del dashboard.
+export async function computeAllClientsStockBreakdown(
   admin: SupabaseClient,
   clients: ConsignmentClientRow[],
   batches: ProductionBatchRow[]
-): Promise<number> {
+): Promise<ConsignmentStockBreakdown> {
   const unitCostByBatch = new Map<string, number>();
   for (const b of batches) {
     const produced = b.units_produced || 1;
@@ -208,11 +219,17 @@ export async function computeAllClientsStockCogs(
 
   const results = await Promise.all(pending);
   let total = 0;
+  const byBatch = new Map<string, BatchStockEntry>();
   for (const outstanding of results) {
     for (const out of outstanding) {
       const unitCost = unitCostByBatch.get(out.batchId) ?? 0;
-      total += out.units * unitCost;
+      const cogs = out.units * unitCost;
+      total += cogs;
+      const entry = byBatch.get(out.batchId) ?? { units: 0, cogs: 0 };
+      entry.units += out.units;
+      entry.cogs += cogs;
+      byBatch.set(out.batchId, entry);
     }
   }
-  return total;
+  return { total, byBatch };
 }

@@ -52,7 +52,8 @@ export function mapApiExpense(row: AnyRow, ambassadors: AmbassadorLike[] = []): 
     type: row.expense_type as Expense["type"],
     sourceSaleId: row.source_sale_id ? String(row.source_sale_id) : undefined,
     ambassadorId: row.ambassador_profile_id ? String(row.ambassador_profile_id) : undefined,
-    ambassadorCode: findCode(ambassadors, row.ambassador_profile_id)
+    ambassadorCode: findCode(ambassadors, row.ambassador_profile_id),
+    batchId: row.batch_id ? String(row.batch_id) : undefined
   };
 }
 
@@ -80,7 +81,8 @@ export function mapApiSaleBatchConsumption(row: AnyRow): SaleBatchConsumption {
     saleId: String(row.sale_id),
     batchId: row.batch_id ? String(row.batch_id) : null,
     units: Number(row.units),
-    cost: Number(row.cost)
+    cost: Number(row.cost),
+    consumesStock: row.consumes_stock !== false
   };
 }
 

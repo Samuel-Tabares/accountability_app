@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
               {
                 clientId,
                 consumeStock: false,
-                precomputedCost: { totalCost: costFaltantesWith.totalCost }
+                precomputedCost: { totalCost: costFaltantesWith.totalCost, rows: costFaltantesWith.rows }
               }
             ),
           (r) => !r.error
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
               {
                 clientId,
                 consumeStock: false,
-                precomputedCost: { totalCost: costFaltantesWithout.totalCost }
+                precomputedCost: { totalCost: costFaltantesWithout.totalCost, rows: costFaltantesWithout.rows }
               }
             ),
           (r) => !r.error

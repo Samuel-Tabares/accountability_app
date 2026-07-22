@@ -31,7 +31,9 @@ export async function resolveFifoCost(
       .select("*")
       .eq("variant", variant)
       .order("created_at", { ascending: true }),
-    adminClient.from("sale_batch_consumptions").select("batch_id, units"),
+    // consumes_stock=false son atribuciones de costo para reportes (p. ej. cobro de
+    // faltantes en recogida de consignación) que NO deben restar disponibilidad real.
+    adminClient.from("sale_batch_consumptions").select("batch_id, units").eq("consumes_stock", true),
     adminClient.from("inventory_returns").select("batch_id, units")
   ]);
 
@@ -80,4 +82,49 @@ export async function resolveFifoCost(
     shortfall: Math.max(0, remaining),
     sufficient: remaining <= 0
   };
+}
+
+export type ActiveBatch = {
+  id: string;
+  label: string;
+  variant: ProductVariant;
+};
+
+// El "lote activo" para efectos de gastos manuales: el más viejo (entre ambas
+// variantes) que todavía tenga stock disponible. Normalmente coincide con el
+// lote que se está vendiendo hoy — es donde un gasto operativo (transporte,
+// insumos, sueldos) causa utilidad real. Si no queda stock en ningún lote,
+// cae al lote más reciente (mejor a asignar ahí que quedar huérfano).
+export async function resolveActiveProductionBatch(adminClient: SupabaseClient): Promise<ActiveBatch | null> {
+  const [batchesResult, consumptionsResult, returnsResult] = await Promise.all([
+    adminClient.from("production_batches").select("id, label, variant, units_produced").order("created_at", { ascending: true }),
+    adminClient.from("sale_batch_consumptions").select("batch_id, units").eq("consumes_stock", true),
+    adminClient.from("inventory_returns").select("batch_id, units")
+  ]);
+
+  const batches = (batchesResult.data ?? []) as Array<Pick<ProductionBatchRow, "id" | "label" | "variant" | "units_produced">>;
+  if (batches.length === 0) return null;
+
+  const consumedByBatch = new Map<string, number>();
+  for (const row of consumptionsResult.data ?? []) {
+    if (!row.batch_id) continue;
+    consumedByBatch.set(row.batch_id, (consumedByBatch.get(row.batch_id) ?? 0) + Number(row.units));
+  }
+  const returnedByBatch = new Map<string, number>();
+  for (const row of returnsResult.data ?? []) {
+    if (!row.batch_id) continue;
+    returnedByBatch.set(row.batch_id, (returnedByBatch.get(row.batch_id) ?? 0) + Number(row.units));
+  }
+
+  for (const batch of batches) {
+    const consumed = consumedByBatch.get(batch.id) ?? 0;
+    const returned = returnedByBatch.get(batch.id) ?? 0;
+    const remaining = batch.units_produced - consumed + returned;
+    if (remaining > 0) {
+      return { id: batch.id, label: batch.label, variant: batch.variant };
+    }
+  }
+
+  const newest = batches[batches.length - 1];
+  return { id: newest.id, label: newest.label, variant: newest.variant };
 }

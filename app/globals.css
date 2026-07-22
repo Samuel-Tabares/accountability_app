@@ -655,6 +655,14 @@ button:disabled {
   max-width: 58ch;
 }
 
+.hero-compact {
+  padding: 0 0 0.9rem;
+}
+
+.hero-compact::before {
+  content: none;
+}
+
 .metrics-grid {
   display: none;
 }
@@ -1045,6 +1053,19 @@ button:disabled {
 .table-row:hover {
   border-color: rgba(31, 169, 218, 0.28);
   background: rgba(255, 255, 255, 0.76);
+}
+
+.table-row-button {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.table-row-button.row-selected {
+  border-color: rgba(31, 169, 218, 0.55);
+  background: rgba(94, 220, 255, 0.16);
 }
 
 .table-row span,

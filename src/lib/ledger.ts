@@ -193,7 +193,7 @@ function saleRealTotal(sale: Pick<Sale, "priceTotal" | "wholesaleNetTotal">) {
 function computeBatchesRemaining(state: AppState): BatchRemaining[] {
   const consumedByBatch = new Map<string, number>();
   for (const c of state.saleBatchConsumptions ?? []) {
-    if (!c.batchId) continue;
+    if (!c.batchId || c.consumesStock === false) continue;
     consumedByBatch.set(c.batchId, (consumedByBatch.get(c.batchId) ?? 0) + c.units);
   }
 
@@ -219,6 +219,14 @@ function computeBatchesRemaining(state: AppState): BatchRemaining[] {
         unitCost: batch.unitsProduced > 0 ? batch.totalCost / batch.unitsProduced : 0
       };
     });
+}
+
+// El lote activo: el más viejo (entre ambas variantes) con stock disponible —
+// donde un gasto manual causa utilidad real hoy. `batches` debe venir ya
+// ordenado ascendente por fecha (así lo entrega `calculateLedger`). Si no
+// queda stock en ningún lote, cae al más reciente en vez de quedar sin sugerencia.
+export function resolveActiveBatch(batches: BatchRemaining[]): BatchRemaining | undefined {
+  return batches.find((batch) => batch.unitsRemaining > 0) ?? batches[batches.length - 1];
 }
 
 function resolveStoredWholesaleSnapshot(

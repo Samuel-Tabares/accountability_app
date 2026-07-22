@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dashboardPathForRole } from "@/src/lib/auth";
 import { requireRouteRole } from "@/src/lib/route-auth";
 import { jsonResponse, setRedirect, wantsJson } from "@/src/lib/api-utils";
+import { resolveActiveProductionBatch } from "@/src/lib/fifo";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -19,11 +20,17 @@ export async function POST(request: NextRequest) {
   const description = String(formData.get("description") ?? "").trim();
   const expenseType = String(formData.get("expense_type") ?? "monthly");
   const ambassadorProfileId = String(formData.get("ambassador_profile_id") ?? "").trim() || null;
+  const batchIdOverride = String(formData.get("batch_id") ?? "").trim() || null;
 
   if (!Number.isFinite(amount) || amount < 0 || !category || !description) {
     if (jsonMode) return jsonResponse(false, "Revisa categoría, descripción y monto.", 400);
     return setRedirect(response, request, dashboardPathForRole(auth.profile.role), "invalid_expense");
   }
+
+  // Todo gasto manual se liga a un lote — es de donde entró el dinero, así que
+  // de ahí sale para que la utilidad por lote sea real. Por defecto el lote
+  // activo (el más viejo con stock); el admin puede sobreescribirlo.
+  const batchId = batchIdOverride ?? (await resolveActiveProductionBatch(auth.adminClient))?.id ?? null;
 
   const { data: expense, error } = await auth.adminClient
     .from("expenses")
@@ -33,6 +40,7 @@ export async function POST(request: NextRequest) {
       description,
       expense_type: expenseType as "monthly" | "oneTime" | "commission" | "discount",
       ambassador_profile_id: ambassadorProfileId,
+      batch_id: batchId,
       created_by: auth.userId
     })
     .select("*")

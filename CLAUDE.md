@@ -52,7 +52,26 @@ Tiered by quantity and variant (`withAlcohol` / `withoutAlcohol`). Each tier has
 Each sale snapshots the active pricing tier at creation time so historical records stay accurate if pricing changes.
 
 ### FIFO cost of goods
-Production batches are created with `units_produced` and `total_cost`. When a sale is recorded, batches are consumed oldest-first and recorded in `sale_batch_consumptions`. `sales.cost_of_goods` stores the FIFO cost for that sale.
+Production batches are created with `units_produced` and `total_cost`. When a sale is recorded, batches are consumed oldest-first and recorded in `sale_batch_consumptions`. `sales.cost_of_goods` stores the FIFO cost for that sale. `sale_batch_consumptions.consumes_stock` (default `true`) distinguishes real stock consumption from report-only cost attribution — see Reporting below.
+
+### Reporting by month and by production batch
+`src/lib/reports.ts` (`computeMonthlyReports`, `computeBatchReports`) slices the same dashboard KPIs
+(revenue, discounts, COGS, gross/net profit, commissions) by calendar month (America/Bogota) or by
+individual production batch, compute-on-read from the existing tables — no new aggregation tables.
+The global dashboard hero stays fully aggregated; per-period detail lives in the "Reportes" tab.
+- Every manual expense (including the ambassador base-salary payout) is tagged with `expenses.batch_id`
+  at creation time — the **active batch**: the oldest batch, across both variants, that still has
+  stock (`resolveActiveProductionBatch` in `src/lib/fifo.ts`; client-side equivalent
+  `resolveActiveBatch` in `src/lib/ledger.ts`). Admin can override it per expense. Money in and out of
+  a batch reconciles that way. Expenses predating this feature have no `batch_id` and only surface in
+  the monthly report.
+- When a sale consumed units from more than one batch, its revenue/discount/commission are split
+  across those batches proportional to units consumed — sums across all batches match the global
+  dashboard totals exactly.
+- A consignment pickup's "missing units" charge sale consumes no stock (it was already deducted at
+  delivery) but still needs a batch to attribute revenue to. Its `sale_batch_consumptions` rows are
+  inserted with `consumes_stock=false`: available for reporting fractions but excluded from FIFO
+  availability and from `unitsRemaining` per batch.
 
 ### Ambassador levels & cycles (gamification)
 Each ambassador runs a personal **30-day cycle anchored to their join date** (`profiles.created_at`),
@@ -127,6 +146,7 @@ Run in order with `supabase db reset` locally or apply manually in Supabase SQL 
 9. `0011_wholesale_client_fields.sql` — `client_name`, `client_address`, `client_phone`, `delivery_fee` on `sales`
 10. `0012_ambassador_payouts.sql` — base-salary liquidation per closed 30-day cycle; idempotent on `(ambassador_profile_id, cycle_start)`
 11. `0013_perf_indexes.sql` — non-destructive performance indexes on hot query paths (sales by ambassador/type/date, expenses by ambassador, consumptions by sale, returns by client/variant)
+12. `0014_batch_reporting.sql` — `expenses.batch_id` (nullable, ties a manual expense to its production batch) and `sale_batch_consumptions.consumes_stock` (default `true`; `false` marks report-only cost attribution that doesn't affect FIFO availability). See Reporting above.
 
 ## Workflow rules
 

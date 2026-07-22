@@ -4,7 +4,7 @@ import { requireAuthContext } from "@/src/lib/auth";
 import { pricingRowsToSettings } from "@/src/lib/pricing";
 import { blankState } from "@/src/lib/seed";
 import { createSupabaseAdminClient } from "@/src/lib/supabase/admin";
-import { computeAllClientsStockCogs } from "@/src/lib/consignment-traceability";
+import { computeAllClientsStockBreakdown } from "@/src/lib/consignment-traceability";
 import type {
   CompanyInfoRow,
   ConsignmentClientRow,
@@ -120,7 +120,8 @@ function mapExpense(row: ExpenseRow, profilesById: Map<string, ProfileRow>): Exp
     type: row.expense_type,
     sourceSaleId: row.source_sale_id ?? undefined,
     ambassadorId: row.ambassador_profile_id ?? undefined,
-    ambassadorCode: ambassador?.ambassador_id ?? ambassador?.username
+    ambassadorCode: ambassador?.ambassador_id ?? ambassador?.username,
+    batchId: row.batch_id ?? undefined
   };
 }
 
@@ -256,7 +257,8 @@ function mapSaleBatchConsumption(row: SaleBatchConsumptionRow): SaleBatchConsump
     saleId: row.sale_id,
     batchId: row.batch_id,
     units: Number(row.units),
-    cost: Number(row.cost)
+    cost: Number(row.cost),
+    consumesStock: row.consumes_stock !== false
   };
 }
 
@@ -294,7 +296,7 @@ export default async function AdminPage({ searchParams }: Props) {
     supabase.from("consignment_pickups").select("*").order("created_at", { ascending: false }),
     supabase.from("consignment_reactivations").select("*").order("created_at", { ascending: false }),
     supabase.from("inventory_returns").select("*").order("created_at", { ascending: false }),
-    supabase.from("sale_batch_consumptions").select("sale_id, batch_id, units, cost"),
+    supabase.from("sale_batch_consumptions").select("sale_id, batch_id, units, cost, consumes_stock"),
     supabase.from("company_info").select("*").eq("id", "singleton").maybeSingle(),
     supabase.from("ambassador_payouts").select("*").order("cycle_start", { ascending: false })
   ]);
@@ -319,11 +321,15 @@ export default async function AdminPage({ searchParams }: Props) {
   const companyInfoRow = (companyInfoResult.data ?? null) as CompanyInfoRow | null;
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
 
-  const consignmentStockCogs = await computeAllClientsStockCogs(
+  const consignmentStockBreakdown = await computeAllClientsStockBreakdown(
     supabase,
     consignmentClientsRows,
     batches
   );
+  const consignmentStockByBatch: Record<string, { units: number; cogs: number }> = {};
+  for (const [batchId, entry] of consignmentStockBreakdown.byBatch) {
+    consignmentStockByBatch[batchId] = entry;
+  }
   const itemsByBatch = new Map<string, ProductionBatchItemRow[]>();
   for (const item of batchItems) {
     itemsByBatch.set(item.batch_id, [...(itemsByBatch.get(item.batch_id) ?? []), item]);
@@ -357,7 +363,8 @@ export default async function AdminPage({ searchParams }: Props) {
     consignmentReactivations: consignmentReactivationsRows.map(mapConsignmentReactivation),
     inventoryReturns: inventoryReturnsRows.map(mapInventoryReturn),
     saleBatchConsumptions: saleBatchConsumptionsRows.map(mapSaleBatchConsumption),
-    consignmentStockCogs,
+    consignmentStockCogs: consignmentStockBreakdown.total,
+    consignmentStockByBatch,
     companyInfo: mapCompanyInfo(companyInfoRow)
   };
 
